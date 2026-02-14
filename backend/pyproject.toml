@@ -13,7 +13,7 @@ uvicorn = { version = "^0.34.0", extras = ["standard"] }
 pydantic-settings = "^2.7.0"
 sqlmodel = "^0.0.22"
 chromadb = "^0.6.0"
-google-generativeai = "^0.8.0"
+google-genai = "^1.0.0"
 openai = "^1.60.0"
 
 [tool.poetry.group.dev.dependencies]
