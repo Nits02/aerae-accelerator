@@ -2,13 +2,13 @@ from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-# Resolve the root-level .env file (two levels up from this file)
+# Resolve the root-level .env file (three levels up from core/config.py)
 ROOT_DIR = Path(__file__).resolve().parents[3]
 ENV_FILE = ROOT_DIR / ".env"
 
 
 class Settings(BaseSettings):
-    """Application settings loaded from the root-level .env file."""
+    """Application settings loaded securely from the root-level .env file."""
 
     model_config = SettingsConfigDict(
         env_file=str(ENV_FILE),
@@ -16,21 +16,23 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
+    # ── Application ──────────────────────────────────────────
     APP_NAME: str = "AERAE Accelerator"
+    API_V1_STR: str = "/api/v1"
     DEBUG: bool = False
 
-    # Database
-    DATABASE_URL: str = "sqlite:///./aerae.db"
+    # ── Database ─────────────────────────────────────────────
+    DATABASE_URL: str = "sqlite:///./aerae_local.db"
 
-    # Azure OpenAI
+    # ── Azure OpenAI ─────────────────────────────────────────
     AZURE_OPENAI_API_KEY: str = ""
     AZURE_OPENAI_ENDPOINT: str = ""
     AZURE_OPENAI_API_VERSION: str = "2024-02-01"
 
-    # Google Gemini
-    GOOGLE_API_KEY: str = ""
+    # ── Google Gemini ────────────────────────────────────────
+    GEMINI_API_KEY: str = ""
 
-    # ChromaDB
+    # ── ChromaDB ─────────────────────────────────────────────
     CHROMA_PERSIST_DIRECTORY: str = "./chroma_data"
 
 
