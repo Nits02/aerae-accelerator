@@ -353,12 +353,6 @@ pytest -v
 
 ---
 
-## 📜 License
-
-Internal project — EPAM Systems.
-
----
-
 <div align="center">
 
 **Built with ❤️ by the AERAE Team**
