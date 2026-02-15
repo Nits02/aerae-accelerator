@@ -7,7 +7,7 @@ from app.core.config import settings
 # Initialise the Gemini client with the API key from .env
 _client = genai.Client(api_key=settings.GEMINI_API_KEY)
 
-DEFAULT_MODEL = "gemini-2.0-flash"
+DEFAULT_MODEL = "gemini-2.5-flash-lite"
 
 
 def generate_content(prompt: str, model: str | None = None) -> str:
