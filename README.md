@@ -363,4 +363,7 @@ Internal project — EPAM Systems.
 
 **Built with ❤️ by the AERAE Team**
 
+[![Website](https://img.shields.io/badge/Website-thedataarch.com-0A66C2?style=for-the-badge&logo=google-chrome&logoColor=white)](https://thedataarch.com/)
+[![LinkedIn](https://img.shields.io/badge/LinkedIn-nsharma02-0A66C2?style=for-the-badge&logo=linkedin&logoColor=white)](https://www.linkedin.com/in/nsharma02/)
+
 </div>
