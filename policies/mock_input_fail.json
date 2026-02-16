@@ -1,0 +1,15 @@
+{
+  "secrets_count": 2,
+  "risks": [
+    {
+      "category": "Data Privacy",
+      "severity": "high",
+      "reason": "PII is collected without encryption."
+    },
+    {
+      "category": "Security",
+      "severity": "high",
+      "reason": "Hardcoded API keys found in source code."
+    }
+  ]
+}

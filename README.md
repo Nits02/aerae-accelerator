@@ -12,8 +12,9 @@
 [![Azure OpenAI](https://img.shields.io/badge/Azure_OpenAI-EPAM_DIAL-0078D4?style=for-the-badge&logo=microsoftazure&logoColor=white)](https://azure.microsoft.com)
 [![Gemini](https://img.shields.io/badge/Google_Gemini-2.0_Flash-4285F4?style=for-the-badge&logo=google&logoColor=white)](https://ai.google.dev)
 [![Poetry](https://img.shields.io/badge/Poetry-Managed-60A5FA?style=for-the-badge&logo=poetry&logoColor=white)](https://python-poetry.org)
-[![Tests](https://img.shields.io/badge/Tests-55_Passing-22C55E?style=for-the-badge&logo=pytest&logoColor=white)](#-running-tests)
+[![Tests](https://img.shields.io/badge/Tests-63_Passing-22C55E?style=for-the-badge&logo=pytest&logoColor=white)](#-running-tests)
 [![ChromaDB](https://img.shields.io/badge/ChromaDB-RAG_Pipeline-FF6F00?style=for-the-badge&logo=databricks&logoColor=white)](https://www.trychroma.com)
+[![OPA](https://img.shields.io/badge/OPA-Rego_Policy_Gates-7D7D7D?style=for-the-badge&logo=openpolicyagent&logoColor=white)](https://www.openpolicyagent.org)
 [![GitPython](https://img.shields.io/badge/GitPython-3.1+-F05032?style=for-the-badge&logo=git&logoColor=white)](https://gitpython.readthedocs.io)
 [![Gitleaks](https://img.shields.io/badge/Gitleaks-Secret_Scanning-FF6347?style=for-the-badge&logo=openbugbounty&logoColor=white)](https://github.com/gitleaks/gitleaks)
 
@@ -49,6 +50,8 @@ The platform includes a **project ingestion pipeline** — upload a PDF document
 
 A **Retrieval-Augmented Generation (RAG) pipeline** powers the risk-assessment engine: AI-ethics policies are embedded via `text-embedding-3-small` and stored in **ChromaDB**. When a project is analysed, the most relevant policies are retrieved by vector similarity and fed into **GPT-4o** (with structured JSON output) to produce categorised risk assessments with severity levels.
 
+An **OPA (Open Policy Agent) ethical-gate layer** enforces hard policy constraints: Rego rules automatically block projects that contain hardcoded secrets or carry high-severity risks. The `OPAGatekeeper` async client integrates the OPA REST API directly into the Python backend, and a companion bash script (`eval_gates.sh`) enables CLI-based gate evaluation with mock inputs.
+
 > [!NOTE]
 > The platform is designed for **zero-downtime AI inference** — if one provider goes down, the other takes over automatically.
 
@@ -69,9 +72,10 @@ A **Retrieval-Augmented Generation (RAG) pipeline** powers the risk-assessment e
 | 📦 | **Project Ingestion** | Unified `/ingest` endpoint merging PDF + Git into `ProjectArtifact` |
 | 🗄️ | **SQLModel + SQLite** | Lightweight database with auto table creation |
 | 🔒 | **Secure Config** | Secrets loaded from git-ignored `.env` file |
-| 🧪 | **Fully Tested** | 55 pytest test cases across 8 test modules |
+| 🧪 | **Fully Tested** | 63 pytest test cases across 9 test modules |
 | 📦 | **Poetry** | Modern Python dependency management |
 | 🔍 | **ChromaDB** | Persistent vector store with policy document collection |
+| 🏛️ | **OPA Policy Gates** | Rego-based ethical gates enforced via Open Policy Agent |
 | 🛡️ | **Type-Safe** | Pydantic models for all request/response schemas |
 
 ---
@@ -169,6 +173,31 @@ flowchart TD
     G --> O2
 ```
 
+### 🏛️ OPA Ethical-Gate Flow
+
+```mermaid
+flowchart TD
+    classDef inputStyle fill:#1e293b,stroke:#60a5fa,stroke-width:2px,color:#f8fafc
+    classDef opaStyle fill:#7c3aed,stroke:#a78bfa,stroke-width:2px,color:#f8fafc
+    classDef regoStyle fill:#b45309,stroke:#fbbf24,stroke-width:2px,color:#f8fafc
+    classDef passStyle fill:#15803d,stroke:#4ade80,stroke-width:2px,color:#f8fafc
+    classDef failStyle fill:#b91c1c,stroke:#f87171,stroke-width:2px,color:#f8fafc
+    classDef clientStyle fill:#0f766e,stroke:#2dd4bf,stroke-width:2px,color:#f8fafc
+
+    P["📋 Risk Payload<br>secrets_count + risks[]"]:::inputStyle
+    GK["🐍 OPAGatekeeper<br><code>evaluate_payload()</code>"]:::clientStyle
+    OPA["🏛️ OPA Server<br><code>localhost:8181</code>"]:::opaStyle
+    REGO["📜 risk_gates.rego<br><code>ethical_gates</code> package"]:::regoStyle
+    ALLOW["✅ ALLOW<br>deny_reasons = []"]:::passStyle
+    DENY["🚫 DENY<br>deny_reasons populated"]:::failStyle
+
+    P --> GK
+    GK -->|"POST /v1/data/ethical_gates"| OPA
+    OPA --> REGO
+    REGO -->|"No secrets & no high risks"| ALLOW
+    REGO -->|"Secrets found or high-severity risk"| DENY
+```
+
 ---
 
 ## 📁 Repository Structure
@@ -205,13 +234,14 @@ aerae-accelerator/
 │   │       ├── 📄 azure_openai_service.py  # Azure OpenAI SDK wrapper (sync)
 │   │       ├── 📄 ai_engine.py             # 🆕 Async Azure engine (embeddings + risk analysis)
 │   │       ├── 📄 vector_store.py          # 🆕 ChromaDB PolicyVectorStore (RAG)
+│   │       ├── 📄 opa_client.py            # 🆕 OPAGatekeeper – async OPA REST client
 │   │       ├── 📄 pdf_parser.py            # PDF metadata extraction (AI-powered)
 │   │       └── 📄 git_scanner.py           # Git clone, file listing & Gitleaks scan
 │   │
 │   ├── 📂 scripts/              #    🛠️ Standalone utility scripts
 │   │   └── 📄 seed_db.py        #       🆕 Seed ChromaDB with 5 AI-ethics policies
 │   │
-│   └── 📂 tests/                #    🧪 Pytest test suite (55 tests)
+│   └── 📂 tests/                #    🧪 Pytest test suite (63 tests)
 │       ├── 📄 test_setup.py     #       Environment verification test
 │       ├── 📄 test_main.py      #       API endpoint tests (health, generate, fallback)
 │       ├── 📄 test_pdf_parser.py#       PDF parser tests (mocked Azure & Gemini)
@@ -219,11 +249,17 @@ aerae-accelerator/
 │       ├── 📄 test_scan_secrets.py#     Gitleaks scan tests (mocked subprocess)
 │       ├── 📄 test_vector_store.py#     🆕 ChromaDB vector store tests (8 tests)
 │       ├── 📄 test_ai_engine.py #       🆕 Embedding tests (AsyncMock, 6 tests)
-│       └── 📄 test_analyze_risk.py#     🆕 Risk analysis tests (AsyncMock, 5 tests)
+│       ├── 📄 test_analyze_risk.py#     🆕 Risk analysis tests (AsyncMock, 5 tests)
+│       └── 📄 test_opa_client.py#       🆕 OPA Gatekeeper tests (AsyncMock, 8 tests)
 │
 ├── 📂 frontend/                 # 🎨 Frontend application (placeholder)
 ├── 📂 infra/                    # ☁️  Infrastructure-as-Code (placeholder)
-└── 📂 policies/                 # 📋 Policy documents (placeholder)
+│
+├── 📂 policies/                 # 🏛️ OPA Rego policies & evaluation tooling
+│   ├── 📄 risk_gates.rego       #    Ethical-gate rules (secrets + high-severity blocking)
+│   ├── 📄 eval_gates.sh         #    Bash script to evaluate gates via OPA CLI
+│   ├── 📄 mock_input_pass.json  #    Sample passing input (0 secrets, low/medium risks)
+│   └── 📄 mock_input_fail.json  #    Sample failing input (2 secrets, 2 high risks)
 ```
 
 </details>
@@ -275,6 +311,7 @@ aerae-accelerator/
 | `backend/app/services/git_scanner.py` | **Git repository scanner.** Clones public HTTPS repos via GitPython into temp directories, lists files, detects extensions, and runs Gitleaks CLI for secret detection. Includes `cleanup()` for safe directory removal. |
 | `backend/app/services/ai_engine.py` | **Async Azure AI engine.** Initializes `AsyncAzureOpenAI` client. Provides `get_embedding(text)` using `text-embedding-3-small` (1536-dim vectors) and `analyze_risk(project_json, policies)` which calls GPT-4o with `response_format={"type": "json_object"}` to return structured risk assessments (category / severity / reason). |
 | `backend/app/services/vector_store.py` | **ChromaDB policy vector store.** Persistent `PersistentClient` saving to `./chroma_data`. Manages the `ai_policies` collection with `add_policy(id, text, embedding)`, `search(query_embedding, top_k)`, and `get_relevant_policies(project_description)` which embeds the description and returns top-k nearest policy texts. |
+| `backend/app/services/opa_client.py` | **OPA Gatekeeper client.** Async HTTP client (`httpx`) that POSTs payloads to the local OPA server at `localhost:8181/v1/data/ethical_gates`. Wraps input and returns `{"allow": bool, "deny_reasons": list}`. Supports custom OPA URLs for remote/production deployments. |
 
 </details>
 
@@ -309,6 +346,19 @@ aerae-accelerator/
 | `backend/tests/test_vector_store.py` | **Vector store tests (8 tests).** Covers: add & search round-trip, similar vector retrieval, top_k limiting, nearest-first ordering, upsert overwrite, empty collection, collection name, fewer-than-top_k results. Uses `tmp_path` fixture for isolation. |
 | `backend/tests/test_ai_engine.py` | **Embedding tests (6 tests).** Covers: returns `list[float]`, correct API args forwarded, custom vector, error propagation, 1536-dim vector, empty string input. All Azure OpenAI calls mocked with `AsyncMock`. |
 | `backend/tests/test_analyze_risk.py` | **Risk analysis tests (5 tests).** Covers: high-severity risk parsing, GPT-4o model + JSON response_format verification, prompt content validation, multiple risks, API error propagation. All chat completions mocked with `AsyncMock`. |
+| `backend/tests/test_opa_client.py` | **OPA Gatekeeper tests (8 tests).** Covers: deny payload parsing, allow payload parsing, input wrapper format, correct URL targeting, custom URL support, missing result key defaults, multiple deny reasons, HTTP error propagation. All httpx calls mocked with `AsyncMock`. |
+
+</details>
+
+<details>
+<summary><b>🏛️ Policies — OPA Rego Gates</b></summary>
+
+| File | Description |
+|:-----|:------------|
+| `policies/risk_gates.rego` | **Ethical-gate Rego rules.** Package `ethical_gates` with `default allow := false`. Blocks projects with any hardcoded secrets (`secrets_count > 0`) or any high-severity risks. Returns human-readable `deny_reasons` messages. |
+| `policies/eval_gates.sh` | **OPA evaluation script.** Bash script that runs `opa eval` against `risk_gates.rego` for one or more input JSON files. Supports per-file or batch mode. Colour-coded PASS/FAIL output. |
+| `policies/mock_input_pass.json` | **Passing mock input.** 0 secrets, 2 risks (low + medium severity) — passes the ethical gate. |
+| `policies/mock_input_fail.json` | **Failing mock input.** 2 secrets, 2 high-severity risks (Data Privacy + Security) — blocked by the ethical gate. |
 
 </details>
 
@@ -424,6 +474,12 @@ curl http://localhost:8000/health
 
 </details>
 
+### 🏛️ OPA Ethical Gate
+
+| Method | Path | Description |
+|:------:|:-----|:------------|
+| ![POST](https://img.shields.io/badge/POST-3B82F6?style=flat-square) | `localhost:8181/v1/data/ethical_gates` | **OPA gate evaluation** — Accepts a risk payload via `OPAGatekeeper`, returns `allow` boolean and `deny_reasons` list |
+
 ### 🧠 RAG & Risk Analysis (Python)
 
 <details>
@@ -461,6 +517,28 @@ asyncio.run(main())
 cd backend && python -m scripts.seed_db
 ```
 
+```python
+import asyncio
+from app.services.opa_client import OPAGatekeeper
+
+async def check_gate():
+    gk = OPAGatekeeper()   # default: localhost:8181
+    result = await gk.evaluate_payload({
+        "secrets_count": 2,
+        "risks": [{"category": "Data Privacy", "severity": "high",
+                   "reason": "PII collected without encryption"}]
+    })
+    print(result)
+    # → {"allow": false, "deny_reasons": ["Blocked: 2 hardcoded secret(s)...", ...]}
+
+asyncio.run(check_gate())
+```
+
+```bash
+# Evaluate OPA ethical gates via CLI (requires OPA installed)
+cd policies && bash eval_gates.sh
+```
+
 </details>
 
 ---
@@ -475,6 +553,7 @@ cd backend && python -m scripts.seed_db
 - **Python 3.11+** — [Download](https://python.org/downloads)
 - **Poetry** — [Install Guide](https://python-poetry.org/docs/#installation)
 - **Gitleaks** _(optional, for secret scanning)_ — `brew install gitleaks` or [Install Guide](https://github.com/gitleaks/gitleaks#installing)
+- **OPA CLI** _(optional, for policy gate evaluation)_ — `brew install opa` or [Install Guide](https://www.openpolicyagent.org/docs/latest/#1-download-opa)
 
 ### 1️⃣ Clone & Configure
 
@@ -501,7 +580,19 @@ cd backend
 python -m scripts.seed_db    # embeds 5 AI-ethics rules into ChromaDB
 ```
 
-### 4️⃣ Run the Server
+### 4️⃣ Verify OPA Ethical Gates _(optional)_
+
+```bash
+# Start the OPA server (separate terminal)
+opa run --server policies/risk_gates.rego
+
+# Run the evaluation script
+bash policies/eval_gates.sh
+# ✔ PASS — mock_input_pass.json
+# ✘ FAIL — mock_input_fail.json
+```
+
+### 5️⃣ Run the Server
 
 ```bash
 uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
@@ -511,11 +602,11 @@ uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 > 🌐 API live at **http://127.0.0.1:8000**
 > 📚 Interactive docs at **http://127.0.0.1:8000/docs**
 
-### 5️⃣ Running Tests
+### 6️⃣ Running Tests
 
 ```bash
 cd backend
-pytest -v          # 55 tests across 8 modules
+pytest -v          # 63 tests across 9 modules
 ```
 
 ---
@@ -558,6 +649,8 @@ pytest -v          # 55 tests across 8 modules
 | **Secret Scanning** | Gitleaks CLI | ![Gitleaks](https://img.shields.io/badge/Gitleaks-FF6347?style=flat-square&logo=openbugbounty&logoColor=white) |
 | **Config** | Pydantic Settings | ![Pydantic](https://img.shields.io/badge/Pydantic-E92063?style=flat-square&logo=pydantic&logoColor=white) |
 | **Testing** | Pytest + HTTPX + AsyncMock | ![Pytest](https://img.shields.io/badge/Pytest-0A9EDC?style=flat-square&logo=pytest&logoColor=white) |
+| **Policy Engine** | Open Policy Agent (OPA) | ![OPA](https://img.shields.io/badge/OPA-7D7D7D?style=flat-square&logo=openpolicyagent&logoColor=white) |
+| **Policy Language** | Rego | ![Rego](https://img.shields.io/badge/Rego-566573?style=flat-square&logo=openpolicyagent&logoColor=white) |
 | **Linting** | Ruff | ![Ruff](https://img.shields.io/badge/Ruff-D7FF64?style=flat-square&logo=ruff&logoColor=black) |
 | **Dependency Mgmt** | Poetry | ![Poetry](https://img.shields.io/badge/Poetry-60A5FA?style=flat-square&logo=poetry&logoColor=white) |
 

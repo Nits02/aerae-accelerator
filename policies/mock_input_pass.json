@@ -1,0 +1,15 @@
+{
+  "secrets_count": 0,
+  "risks": [
+    {
+      "category": "Bias",
+      "severity": "low",
+      "reason": "Minor representation gap in training data."
+    },
+    {
+      "category": "Transparency",
+      "severity": "medium",
+      "reason": "Model decisions lack full audit trail."
+    }
+  ]
+}
