@@ -178,7 +178,7 @@ aerae-accelerator/
 
 | File | Description |
 |:-----|:------------|
-| `backend/app/services/gemini_service.py` | **Google Gemini wrapper.** Initializes a `genai.Client` with the API key and exposes `generate_content(prompt)` using the `gemini-2.5-flash-lite` model. |
+| `backend/app/services/gemini_service.py` | **Google Gemini wrapper.** Initializes a `genai.Client` with the API key and exposes `generate_content(prompt)` using the `gemini-2.0-flash-lite` model. |
 | `backend/app/services/azure_openai_service.py` | **Azure OpenAI wrapper.** Initializes an `AzureOpenAI` client pointed at the EPAM DIAL proxy and exposes `chat_completion(prompt)` using the `gpt-4o-mini-2024-07-18` deployment. |
 
 </details>
@@ -220,7 +220,7 @@ aerae-accelerator/
 ```json
 {
   "prompt": "Explain how AI works in a few words",
-  "model": "gemini-2.5-flash-lite"          // optional — uses default if omitted
+  "model": "gemini-2.0-flash-lite"          // optional — uses default if omitted
 }
 ```
 
@@ -229,7 +229,7 @@ aerae-accelerator/
 ```json
 {
   "source": "gemini",                   // "gemini" or "azure-openai"
-  "model": "gemini-2.5-flash-lite",
+  "model": "gemini-2.0-flash-lite",
   "response": "AI learns patterns from data to make predictions.",
   "fallback_used": false,               // true if Azure was used as fallback
   "fallback_reason": null               // explains why fallback was triggered
