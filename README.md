@@ -2,7 +2,7 @@
 
 # 🚀 AERAE Accelerator
 
-### _AI-Powered Policy Analysis Platform with Multi-Provider LLM Support_
+### _AI-Powered Risk Assessment & Policy Analysis Platform with RAG + Multi-Provider LLM Support_
 
 <br>
 
@@ -12,7 +12,8 @@
 [![Azure OpenAI](https://img.shields.io/badge/Azure_OpenAI-EPAM_DIAL-0078D4?style=for-the-badge&logo=microsoftazure&logoColor=white)](https://azure.microsoft.com)
 [![Gemini](https://img.shields.io/badge/Google_Gemini-2.0_Flash-4285F4?style=for-the-badge&logo=google&logoColor=white)](https://ai.google.dev)
 [![Poetry](https://img.shields.io/badge/Poetry-Managed-60A5FA?style=for-the-badge&logo=poetry&logoColor=white)](https://python-poetry.org)
-[![Tests](https://img.shields.io/badge/Tests-36_Passing-22C55E?style=for-the-badge&logo=pytest&logoColor=white)](#-running-tests)
+[![Tests](https://img.shields.io/badge/Tests-55_Passing-22C55E?style=for-the-badge&logo=pytest&logoColor=white)](#-running-tests)
+[![ChromaDB](https://img.shields.io/badge/ChromaDB-RAG_Pipeline-FF6F00?style=for-the-badge&logo=databricks&logoColor=white)](https://www.trychroma.com)
 [![GitPython](https://img.shields.io/badge/GitPython-3.1+-F05032?style=for-the-badge&logo=git&logoColor=white)](https://gitpython.readthedocs.io)
 [![Gitleaks](https://img.shields.io/badge/Gitleaks-Secret_Scanning-FF6347?style=for-the-badge&logo=openbugbounty&logoColor=white)](https://github.com/gitleaks/gitleaks)
 
@@ -44,7 +45,9 @@
 
 **AERAE Accelerator** is a Python monorepo that provides a FastAPI backend capable of generating AI-powered content using **Google Gemini** and **Azure OpenAI** (via EPAM DIAL proxy). It features an intelligent **automatic fallback mechanism** — if Gemini is unavailable (rate-limited, quota exhausted, etc.), the system seamlessly switches to Azure OpenAI, ensuring uninterrupted service.
 
-The platform also includes a **project ingestion pipeline** — upload a PDF document and/or provide a GitHub repository URL to automatically extract project metadata, scan for hardcoded secrets using **Gitleaks**, and return a unified `ProjectArtifact` combining document analysis and code intelligence.
+The platform includes a **project ingestion pipeline** — upload a PDF document and/or provide a GitHub repository URL to automatically extract project metadata, scan for hardcoded secrets using **Gitleaks**, and return a unified `ProjectArtifact` combining document analysis and code intelligence.
+
+A **Retrieval-Augmented Generation (RAG) pipeline** powers the risk-assessment engine: AI-ethics policies are embedded via `text-embedding-3-small` and stored in **ChromaDB**. When a project is analysed, the most relevant policies are retrieved by vector similarity and fed into **GPT-4o** (with structured JSON output) to produce categorised risk assessments with severity levels.
 
 > [!NOTE]
 > The platform is designed for **zero-downtime AI inference** — if one provider goes down, the other takes over automatically.
@@ -57,15 +60,18 @@ The platform also includes a **project ingestion pipeline** — upload a PDF doc
 |:-:|:--------|:------------|
 | 🔄 | **Multi-Provider AI** | Gemini + Azure OpenAI with automatic failover |
 | ⚡ | **FastAPI** | High-performance async Python API |
-| � | **PDF Parsing** | Extract project purpose, data types & risks from PDFs via AI |
+| 🧠 | **RAG Pipeline** | Embed policies in ChromaDB, retrieve by similarity, feed to GPT-4o |
+| 📊 | **Risk Analysis** | Structured JSON risk assessment (category / severity / reason) via GPT-4o |
+| 🔢 | **Embeddings** | Azure OpenAI `text-embedding-3-small` for semantic search |
+| 📝 | **PDF Parsing** | Extract project purpose, data types & risks from PDFs via AI |
 | 🔎 | **Git Scanning** | Clone repos, list files & detect languages automatically |
 | 🛡️ | **Secret Detection** | Gitleaks CLI integration to find hardcoded credentials |
 | 📦 | **Project Ingestion** | Unified `/ingest` endpoint merging PDF + Git into `ProjectArtifact` |
 | 🗄️ | **SQLModel + SQLite** | Lightweight database with auto table creation |
 | 🔒 | **Secure Config** | Secrets loaded from git-ignored `.env` file |
-| 🧪 | **Fully Tested** | 36 pytest test cases across 5 test modules |
+| 🧪 | **Fully Tested** | 55 pytest test cases across 8 test modules |
 | 📦 | **Poetry** | Modern Python dependency management |
-| 🔍 | **ChromaDB** | Vector store ready for RAG pipelines |
+| 🔍 | **ChromaDB** | Persistent vector store with policy document collection |
 | 🛡️ | **Type-Safe** | Pydantic models for all request/response schemas |
 
 ---
@@ -132,6 +138,37 @@ flowchart TD
     O --> P
 ```
 
+### 🧠 RAG Risk-Assessment Flow
+
+```mermaid
+flowchart TD
+    classDef clientStyle fill:#1e293b,stroke:#60a5fa,stroke-width:2px,color:#f8fafc
+    classDef engineStyle fill:#7c3aed,stroke:#a78bfa,stroke-width:2px,color:#f8fafc
+    classDef chromaStyle fill:#b45309,stroke:#fbbf24,stroke-width:2px,color:#f8fafc
+    classDef gptStyle fill:#0f766e,stroke:#2dd4bf,stroke-width:2px,color:#f8fafc
+    classDef successStyle fill:#15803d,stroke:#4ade80,stroke-width:2px,color:#f8fafc
+    classDef seedStyle fill:#374151,stroke:#9ca3af,stroke-width:2px,color:#f8fafc
+
+    S["🌱 seed_db.py<br>5 AI-ethics rules"]:::seedStyle
+    E1["🔢 AzureAIEngine<br><code>get_embedding()</code>"]:::engineStyle
+    C["🗄️ ChromaDB<br><code>ai_policies</code> collection"]:::chromaStyle
+
+    S --> E1
+    E1 -->|"1536-dim vectors"| C
+
+    Q["📋 Project Description"]:::clientStyle
+    E2["🔢 AzureAIEngine<br><code>get_embedding()</code>"]:::engineStyle
+    R["🔍 PolicyVectorStore<br><code>get_relevant_policies()</code>"]:::chromaStyle
+    G["🤖 GPT-4o<br><code>analyze_risk()</code><br>response_format: json"]:::gptStyle
+    O2["✅ Structured Risks<br>category · severity · reason"]:::successStyle
+
+    Q --> E2
+    E2 -->|"query embedding"| R
+    R -->|"top-3 policies"| G
+    Q -->|"project context"| G
+    G --> O2
+```
+
 ---
 
 ## 📁 Repository Structure
@@ -165,16 +202,24 @@ aerae-accelerator/
 │   │   │
 │   │   └── 📂 services/         #    🤖 Business logic & integrations
 │   │       ├── 📄 gemini_service.py        # Google Gemini SDK wrapper
-│   │       ├── 📄 azure_openai_service.py  # Azure OpenAI SDK wrapper
+│   │       ├── 📄 azure_openai_service.py  # Azure OpenAI SDK wrapper (sync)
+│   │       ├── 📄 ai_engine.py             # 🆕 Async Azure engine (embeddings + risk analysis)
+│   │       ├── 📄 vector_store.py          # 🆕 ChromaDB PolicyVectorStore (RAG)
 │   │       ├── 📄 pdf_parser.py            # PDF metadata extraction (AI-powered)
 │   │       └── 📄 git_scanner.py           # Git clone, file listing & Gitleaks scan
 │   │
-│   └── 📂 tests/                #    🧪 Pytest test suite (36 tests)
+│   ├── 📂 scripts/              #    🛠️ Standalone utility scripts
+│   │   └── 📄 seed_db.py        #       🆕 Seed ChromaDB with 5 AI-ethics policies
+│   │
+│   └── 📂 tests/                #    🧪 Pytest test suite (55 tests)
 │       ├── 📄 test_setup.py     #       Environment verification test
 │       ├── 📄 test_main.py      #       API endpoint tests (health, generate, fallback)
 │       ├── 📄 test_pdf_parser.py#       PDF parser tests (mocked Azure & Gemini)
 │       ├── 📄 test_git_scanner.py#      Git scanner tests (clone, cleanup, validation)
-│       └── 📄 test_scan_secrets.py#     Gitleaks scan tests (mocked subprocess)
+│       ├── 📄 test_scan_secrets.py#     Gitleaks scan tests (mocked subprocess)
+│       ├── 📄 test_vector_store.py#     🆕 ChromaDB vector store tests (8 tests)
+│       ├── 📄 test_ai_engine.py #       🆕 Embedding tests (AsyncMock, 6 tests)
+│       └── 📄 test_analyze_risk.py#     🆕 Risk analysis tests (AsyncMock, 5 tests)
 │
 ├── 📂 frontend/                 # 🎨 Frontend application (placeholder)
 ├── 📂 infra/                    # ☁️  Infrastructure-as-Code (placeholder)
@@ -228,6 +273,17 @@ aerae-accelerator/
 | `backend/app/services/azure_openai_service.py` | **Azure OpenAI wrapper.** Initializes an `AzureOpenAI` client pointed at the EPAM DIAL proxy and exposes `chat_completion(prompt)` using the `gpt-4o-mini-2024-07-18` deployment. |
 | `backend/app/services/pdf_parser.py` | **PDF metadata extractor.** Reads a PDF file, sends it to Azure OpenAI (base64) or Gemini (`genai.upload_file`) as fallback, and extracts `project_purpose`, `data_types_used`, and `potential_risks` into strict JSON. |
 | `backend/app/services/git_scanner.py` | **Git repository scanner.** Clones public HTTPS repos via GitPython into temp directories, lists files, detects extensions, and runs Gitleaks CLI for secret detection. Includes `cleanup()` for safe directory removal. |
+| `backend/app/services/ai_engine.py` | **Async Azure AI engine.** Initializes `AsyncAzureOpenAI` client. Provides `get_embedding(text)` using `text-embedding-3-small` (1536-dim vectors) and `analyze_risk(project_json, policies)` which calls GPT-4o with `response_format={"type": "json_object"}` to return structured risk assessments (category / severity / reason). |
+| `backend/app/services/vector_store.py` | **ChromaDB policy vector store.** Persistent `PersistentClient` saving to `./chroma_data`. Manages the `ai_policies` collection with `add_policy(id, text, embedding)`, `search(query_embedding, top_k)`, and `get_relevant_policies(project_description)` which embeds the description and returns top-k nearest policy texts. |
+
+</details>
+
+<details>
+<summary><b>🛠️ Backend — Scripts</b></summary>
+
+| File | Description |
+|:-----|:------------|
+| `backend/scripts/seed_db.py` | **Database seeder.** Standalone script that embeds 5 hardcoded AI-ethics rules (e.g., "No PII allowed without encryption") via `AzureAIEngine.get_embedding()` and stores them in ChromaDB via `PolicyVectorStore.add_policy()`. Run with `python -m scripts.seed_db` from the backend directory. |
 
 </details>
 
@@ -250,6 +306,9 @@ aerae-accelerator/
 | `backend/tests/test_pdf_parser.py` | **PDF parser tests (9 tests).** Covers: Azure success, Gemini fallback, both-fail error, file-not-found, non-PDF rejection, JSON fence stripping, missing-key validation, and end-to-end mocked Azure/Gemini extraction. |
 | `backend/tests/test_git_scanner.py` | **Git scanner tests (10 tests).** Covers: clone creates directory, cleanup removes directory, cleanup idempotent, context-manager auto-cleanup, list_files, extension filter, SSH URL rejection, embedded credentials, empty URL, invalid repo. Uses real `octocat/Hello-World` repo. |
 | `backend/tests/test_scan_secrets.py` | **Gitleaks scan tests (10 tests).** Covers: 2-leak detection, no-leak scan, error handling (exit code > 1), timeout, missing gitleaks CLI, invalid directory, and report parsing (valid, empty, missing, malformed JSON). All subprocess calls mocked. |
+| `backend/tests/test_vector_store.py` | **Vector store tests (8 tests).** Covers: add & search round-trip, similar vector retrieval, top_k limiting, nearest-first ordering, upsert overwrite, empty collection, collection name, fewer-than-top_k results. Uses `tmp_path` fixture for isolation. |
+| `backend/tests/test_ai_engine.py` | **Embedding tests (6 tests).** Covers: returns `list[float]`, correct API args forwarded, custom vector, error propagation, 1536-dim vector, empty string input. All Azure OpenAI calls mocked with `AsyncMock`. |
+| `backend/tests/test_analyze_risk.py` | **Risk analysis tests (5 tests).** Covers: high-severity risk parsing, GPT-4o model + JSON response_format verification, prompt content validation, multiple risks, API error propagation. All chat completions mocked with `AsyncMock`. |
 
 </details>
 
@@ -365,6 +424,45 @@ curl http://localhost:8000/health
 
 </details>
 
+### 🧠 RAG & Risk Analysis (Python)
+
+<details>
+<summary><b>🔧 Usage Examples</b></summary>
+
+```python
+import asyncio
+from app.services.ai_engine import AzureAIEngine
+from app.services.vector_store import PolicyVectorStore
+
+async def main():
+    engine = AzureAIEngine()
+    store = PolicyVectorStore(persist_directory="./chroma_data")
+
+    # 1. Retrieve relevant policies via semantic search
+    policies = await store.get_relevant_policies(
+        "Our app collects user location data for ML training"
+    )
+    print(policies)  # top-3 most relevant AI-ethics rules
+
+    # 2. Run risk analysis with GPT-4o
+    project = {
+        "project_name": "Location ML",
+        "code_metadata": {"secrets_found": 1, "files_count": 42},
+        "document_text": "Collects GPS data without consent."
+    }
+    result = await engine.analyze_risk(project, policies)
+    # → {"risks": [{"category": "Data Privacy", "severity": "high", "reason": "..."}]}
+
+asyncio.run(main())
+```
+
+```bash
+# Seed ChromaDB with 5 AI-ethics policies
+cd backend && python -m scripts.seed_db
+```
+
+</details>
+
 ---
 
 ## ⚙️ Getting Started
@@ -396,7 +494,14 @@ cd backend
 poetry install        # installs main + dev dependencies
 ```
 
-### 3️⃣ Run the Server
+### 3️⃣ Seed the Policy Database
+
+```bash
+cd backend
+python -m scripts.seed_db    # embeds 5 AI-ethics rules into ChromaDB
+```
+
+### 4️⃣ Run the Server
 
 ```bash
 uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
@@ -406,11 +511,11 @@ uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 > 🌐 API live at **http://127.0.0.1:8000**
 > 📚 Interactive docs at **http://127.0.0.1:8000/docs**
 
-### 4️⃣ Running Tests
+### 5️⃣ Running Tests
 
 ```bash
 cd backend
-pytest -v
+pytest -v          # 55 tests across 8 modules
 ```
 
 ---
@@ -447,10 +552,12 @@ pytest -v
 | **Vector Store** | ChromaDB | ![ChromaDB](https://img.shields.io/badge/ChromaDB-FF6F00?style=flat-square&logo=databricks&logoColor=white) |
 | **LLM Provider 1** | Google Gemini | ![Gemini](https://img.shields.io/badge/Gemini-4285F4?style=flat-square&logo=google&logoColor=white) |
 | **LLM Provider 2** | Azure OpenAI (EPAM DIAL) | ![Azure](https://img.shields.io/badge/Azure_OpenAI-0078D4?style=flat-square&logo=microsoftazure&logoColor=white) |
+| **Embeddings** | text-embedding-3-small (1536-dim) | ![Embeddings](https://img.shields.io/badge/Embeddings-1536d-8B5CF6?style=flat-square&logo=openai&logoColor=white) |
+| **Risk Analysis** | GPT-4o (structured JSON) | ![GPT-4o](https://img.shields.io/badge/GPT--4o-412991?style=flat-square&logo=openai&logoColor=white) |
 | **Git Integration** | GitPython 3.1+ | ![GitPython](https://img.shields.io/badge/GitPython-F05032?style=flat-square&logo=git&logoColor=white) |
 | **Secret Scanning** | Gitleaks CLI | ![Gitleaks](https://img.shields.io/badge/Gitleaks-FF6347?style=flat-square&logo=openbugbounty&logoColor=white) |
 | **Config** | Pydantic Settings | ![Pydantic](https://img.shields.io/badge/Pydantic-E92063?style=flat-square&logo=pydantic&logoColor=white) |
-| **Testing** | Pytest + HTTPX | ![Pytest](https://img.shields.io/badge/Pytest-0A9EDC?style=flat-square&logo=pytest&logoColor=white) |
+| **Testing** | Pytest + HTTPX + AsyncMock | ![Pytest](https://img.shields.io/badge/Pytest-0A9EDC?style=flat-square&logo=pytest&logoColor=white) |
 | **Linting** | Ruff | ![Ruff](https://img.shields.io/badge/Ruff-D7FF64?style=flat-square&logo=ruff&logoColor=black) |
 | **Dependency Mgmt** | Poetry | ![Poetry](https://img.shields.io/badge/Poetry-60A5FA?style=flat-square&logo=poetry&logoColor=white) |
 
