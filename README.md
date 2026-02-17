@@ -12,7 +12,7 @@
 [![Azure OpenAI](https://img.shields.io/badge/Azure_OpenAI-EPAM_DIAL-0078D4?style=for-the-badge&logo=microsoftazure&logoColor=white)](https://azure.microsoft.com)
 [![Gemini](https://img.shields.io/badge/Google_Gemini-2.0_Flash-4285F4?style=for-the-badge&logo=google&logoColor=white)](https://ai.google.dev)
 [![Poetry](https://img.shields.io/badge/Poetry-Managed-60A5FA?style=for-the-badge&logo=poetry&logoColor=white)](https://python-poetry.org)
-[![Tests](https://img.shields.io/badge/Tests-63_Passing-22C55E?style=for-the-badge&logo=pytest&logoColor=white)](#-running-tests)
+[![Tests](https://img.shields.io/badge/Tests-67_Passing-22C55E?style=for-the-badge&logo=pytest&logoColor=white)](#-running-tests)
 [![ChromaDB](https://img.shields.io/badge/ChromaDB-RAG_Pipeline-FF6F00?style=for-the-badge&logo=databricks&logoColor=white)](https://www.trychroma.com)
 [![OPA](https://img.shields.io/badge/OPA-Rego_Policy_Gates-7D7D7D?style=for-the-badge&logo=openpolicyagent&logoColor=white)](https://www.openpolicyagent.org)
 [![GitPython](https://img.shields.io/badge/GitPython-3.1+-F05032?style=for-the-badge&logo=git&logoColor=white)](https://gitpython.readthedocs.io)
@@ -52,6 +52,8 @@ A **Retrieval-Augmented Generation (RAG) pipeline** powers the risk-assessment e
 
 An **OPA (Open Policy Agent) ethical-gate layer** enforces hard policy constraints: Rego rules automatically block projects that contain hardcoded secrets or carry high-severity risks. The `OPAGatekeeper` async client integrates the OPA REST API directly into the Python backend, and a companion bash script (`eval_gates.sh`) enables CLI-based gate evaluation with mock inputs.
 
+A **full end-to-end assessment pipeline** ties everything together: `POST /api/v1/assess` accepts a PDF path and GitHub URL, creates a tracked job in SQLite, and immediately returns a UUID. A background task sequentially runs **Ingestion** (Git clone + Gitleaks + PDF parsing), **RAG** (embedding → policy search → GPT-4o risk analysis), **Trust Scoring** (algorithmic score with High/Medium/secret penalties), and **OPA gate evaluation**. Poll `GET /api/v1/assess/{job_id}` for results — **202** while processing, **200** with the full report when complete.
+
 > [!NOTE]
 > The platform is designed for **zero-downtime AI inference** — if one provider goes down, the other takes over automatically.
 
@@ -76,6 +78,8 @@ An **OPA (Open Policy Agent) ethical-gate layer** enforces hard policy constrain
 | 📦 | **Poetry** | Modern Python dependency management |
 | 🔍 | **ChromaDB** | Persistent vector store with policy document collection |
 | 🏛️ | **OPA Policy Gates** | Rego-based ethical gates enforced via Open Policy Agent |
+| 🎯 | **Trust Scoring** | Algorithmic score (100 → 0) penalising High risks, Medium risks & secrets |
+| 🔄 | **Async Assessment** | Background pipeline with job tracking (Processing → Complete / Failed) |
 | 🛡️ | **Type-Safe** | Pydantic models for all request/response schemas |
 
 ---
@@ -198,6 +202,44 @@ flowchart TD
     REGO -->|"Secrets found or high-severity risk"| DENY
 ```
 
+### 🎯 End-to-End Assessment Pipeline
+
+```mermaid
+flowchart TD
+    classDef clientStyle fill:#1e293b,stroke:#60a5fa,stroke-width:2px,color:#f8fafc
+    classDef apiStyle fill:#0f766e,stroke:#2dd4bf,stroke-width:2px,color:#f8fafc
+    classDef dbStyle fill:#374151,stroke:#9ca3af,stroke-width:2px,color:#f8fafc
+    classDef ingestStyle fill:#b45309,stroke:#fbbf24,stroke-width:2px,color:#f8fafc
+    classDef ragStyle fill:#7c3aed,stroke:#a78bfa,stroke-width:2px,color:#f8fafc
+    classDef scoreStyle fill:#15803d,stroke:#4ade80,stroke-width:2px,color:#f8fafc
+    classDef opaStyle fill:#b91c1c,stroke:#f87171,stroke-width:2px,color:#f8fafc
+
+    REQ["🌐 POST /api/v1/assess<br>pdf_path + github_url"]:::clientStyle
+    API["⚡ Create AssessmentJob<br>status = Processing"]:::apiStyle
+    UUID["🔑 Return UUID<br>200 OK (immediate)"]:::clientStyle
+    BG["⏳ Background Task"]:::dbStyle
+
+    I1["🔎 GitScanner<br>clone + list files"]:::ingestStyle
+    I2["🛡️ Gitleaks<br>scan_secrets()"]:::ingestStyle
+    I3["📝 PDF Parser<br>Azure → Gemini fallback"]:::ingestStyle
+
+    R1["🔢 get_embedding()<br>project description"]:::ragStyle
+    R2["🔍 PolicyVectorStore<br>search top-3"]:::ragStyle
+    R3["🤖 analyze_risk()<br>GPT-4o structured JSON"]:::ragStyle
+
+    SC["🎯 calculate_trust_score<br>100 − penalties"]:::scoreStyle
+    OPA["🏛️ OPAGatekeeper<br>allow / deny"]:::opaStyle
+    DB["💾 Save to DB<br>status = Complete"]:::dbStyle
+    POLL["🌐 GET /assess/{job_id}<br>202 → 200 + full report"]:::clientStyle
+
+    REQ --> API --> UUID
+    API --> BG
+    BG --> I1 --> I2 --> I3
+    I3 --> R1 --> R2 --> R3
+    R3 --> SC --> OPA --> DB
+    DB -.-> POLL
+```
+
 ---
 
 ## 📁 Repository Structure
@@ -221,7 +263,8 @@ aerae-accelerator/
 │   │   │
 │   │   ├── 📂 core/             #    🔩 Core configuration & infrastructure
 │   │   │   ├── 📄 config.py     #       Pydantic Settings (loads .env)
-│   │   │   └── 📄 db.py         #       SQLModel engine & table creation
+│   │   │   ├── 📄 db.py         #       SQLModel engine & table creation
+│   │   │   └── 📄 scoring.py    #       🆕 Trust-score calculator (100 → 0)
 │   │   │
 │   │   ├── 📂 api/              #    🌐 API layer (routes & schemas)
 │   │   │   └── 📄 routes.py     #       All API endpoints & Pydantic schemas
@@ -241,7 +284,7 @@ aerae-accelerator/
 │   ├── 📂 scripts/              #    🛠️ Standalone utility scripts
 │   │   └── 📄 seed_db.py        #       🆕 Seed ChromaDB with 5 AI-ethics policies
 │   │
-│   └── 📂 tests/                #    🧪 Pytest test suite (63 tests)
+│   └── 📂 tests/                #    🧪 Pytest test suite (67 tests)
 │       ├── 📄 test_setup.py     #       Environment verification test
 │       ├── 📄 test_main.py      #       API endpoint tests (health, generate, fallback)
 │       ├── 📄 test_pdf_parser.py#       PDF parser tests (mocked Azure & Gemini)
@@ -250,7 +293,10 @@ aerae-accelerator/
 │       ├── 📄 test_vector_store.py#     🆕 ChromaDB vector store tests (8 tests)
 │       ├── 📄 test_ai_engine.py #       🆕 Embedding tests (AsyncMock, 6 tests)
 │       ├── 📄 test_analyze_risk.py#     🆕 Risk analysis tests (AsyncMock, 5 tests)
-│       └── 📄 test_opa_client.py#       🆕 OPA Gatekeeper tests (AsyncMock, 8 tests)
+│       ├── 📄 test_opa_client.py#       🆕 OPA Gatekeeper tests (AsyncMock, 8 tests)
+│       ├── 📄 test_scoring.py   #       🆕 Trust-score calculation tests (3 tests)
+│       ├── 📄 test_assess.py    #       🆕 POST /assess endpoint test (1 test)
+│       └── 📄 test_get_assess.py#       🆕 GET /assess/{job_id} tests (3 tests)
 │
 ├── 📂 frontend/                 # 🎨 Frontend application (placeholder)
 ├── 📂 infra/                    # ☁️  Infrastructure-as-Code (placeholder)
@@ -285,9 +331,10 @@ aerae-accelerator/
 | File | Description |
 |:-----|:------------|
 | `backend/pyproject.toml` | Poetry project config — declares dependencies (FastAPI, uvicorn, SQLModel, google-genai, openai, chromadb, pydantic-settings, gitpython, python-multipart) and dev tools (pytest, httpx, ruff). |
-| `backend/app/main.py` | **FastAPI app entry point.** Initializes the app, registers the API router under `/api/v1`, sets up a lifespan handler that auto-creates database tables on startup, and exposes a `/health` liveness probe. |
+| `backend/app/main.py` | **FastAPI app entry point.** Initializes the app, registers the API router under `/api/v1`, sets up a lifespan handler that auto-creates database tables on startup, exposes a `/health` liveness probe, and hosts `POST /api/v1/assess` (create assessment job) and `GET /api/v1/assess/{job_id}` (poll results). Contains the full background `run_assessment` pipeline (Ingestion → RAG → Scoring → OPA). |
 | `backend/app/core/config.py` | **Pydantic Settings class.** Securely loads all environment variables from the root-level `.env` file. Manages keys for Azure OpenAI, Gemini, database URL, ChromaDB path, and app settings. |
-| `backend/app/core/db.py` | **Database engine.** Creates a SQLModel/SQLAlchemy engine connected to SQLite (`aerae_local.db`). Provides `create_db_and_tables()` called at startup to auto-create all registered model tables. |
+| `backend/app/core/db.py` | **Database engine.** Creates a SQLModel/SQLAlchemy engine connected to SQLite (`aerae_local.db`). Defines the `AssessmentJob` model (UUID primary key, status, result JSON). Provides `create_db_and_tables()` called at startup to auto-create all registered model tables. |
+| `backend/app/core/scoring.py` | **Trust-score calculator.** `calculate_trust_score(risks, secrets)` starts at 100 points, subtracts 25 per High risk, 10 per Medium risk, and 15 per secret. Clamps the result to a minimum of 0. |
 
 </details>
 
@@ -347,6 +394,9 @@ aerae-accelerator/
 | `backend/tests/test_ai_engine.py` | **Embedding tests (6 tests).** Covers: returns `list[float]`, correct API args forwarded, custom vector, error propagation, 1536-dim vector, empty string input. All Azure OpenAI calls mocked with `AsyncMock`. |
 | `backend/tests/test_analyze_risk.py` | **Risk analysis tests (5 tests).** Covers: high-severity risk parsing, GPT-4o model + JSON response_format verification, prompt content validation, multiple risks, API error propagation. All chat completions mocked with `AsyncMock`. |
 | `backend/tests/test_opa_client.py` | **OPA Gatekeeper tests (8 tests).** Covers: deny payload parsing, allow payload parsing, input wrapper format, correct URL targeting, custom URL support, missing result key defaults, multiple deny reasons, HTTP error propagation. All httpx calls mocked with `AsyncMock`. |
+| `backend/tests/test_scoring.py` | **Trust-score tests (3 tests).** Covers: perfect score (0 risks, 0 secrets → 100), mixed score (1 Medium + 1 secret → 75), floor at zero (5 High risks → 0). |
+| `backend/tests/test_assess.py` | **POST /assess test (1 test).** Patches the background task, asserts immediate 200 OK with valid UUID and `Processing` status. |
+| `backend/tests/test_get_assess.py` | **GET /assess/{job_id} tests (3 tests).** Covers: completed job returns 200 with full result JSON, non-existent UUID returns 404, processing job returns 202 Accepted. |
 
 </details>
 
@@ -386,6 +436,13 @@ aerae-accelerator/
 | Method | Path | Description |
 |:------:|:-----|:------------|
 | ![POST](https://img.shields.io/badge/POST-3B82F6?style=flat-square) | `/api/v1/ingest` | **Ingest endpoint** — Accepts a GitHub URL + optional PDF upload. Clones the repo, scans for secrets, extracts PDF metadata, and returns a unified `ProjectArtifact`. |
+
+### 🎯 Assessment Pipeline
+
+| Method | Path | Description |
+|:------:|:-----|:------------|
+| ![POST](https://img.shields.io/badge/POST-3B82F6?style=flat-square) | `/api/v1/assess` | **Start assessment** — Accepts `{pdf_path, github_url}`, creates a tracked job, returns UUID immediately (200). Background task runs: Ingestion → RAG → Scoring → OPA. |
+| ![GET](https://img.shields.io/badge/GET-22C55E?style=flat-square) | `/api/v1/assess/{job_id}` | **Poll results** — Returns **202 Accepted** while processing, **200 OK** with full risk report, trust score & OPA decision when complete, **404** if UUID not found. |
 
 <details>
 <summary><b>📥 Request / Response Examples</b></summary>
@@ -470,6 +527,16 @@ curl -X POST http://localhost:8000/api/v1/ingest \
 
 # Health check
 curl http://localhost:8000/health
+
+# Start an assessment job
+curl -X POST http://localhost:8000/api/v1/assess \
+  -H "Content-Type: application/json" \
+  -d '{"pdf_path": "/path/to/doc.pdf", "github_url": "https://github.com/owner/repo"}'
+# → {"job_id": "<uuid>", "status": "Processing"}
+
+# Poll for results
+curl http://localhost:8000/api/v1/assess/<uuid>
+# → 202 while processing, 200 with full report when complete
 ```
 
 </details>
@@ -606,7 +673,7 @@ uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 
 ```bash
 cd backend
-pytest -v          # 63 tests across 9 modules
+pytest -v          # 67 tests across 12 modules
 ```
 
 ---
