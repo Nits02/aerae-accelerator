@@ -8,6 +8,10 @@
 
 [![Python](https://img.shields.io/badge/Python-3.11+-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://python.org)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688?style=for-the-badge&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
+[![React](https://img.shields.io/badge/React-19-61DAFB?style=for-the-badge&logo=react&logoColor=black)](https://react.dev)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://typescriptlang.org)
+[![Vite](https://img.shields.io/badge/Vite-7.3-646CFF?style=for-the-badge&logo=vite&logoColor=white)](https://vite.dev)
+[![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-4.1-06B6D4?style=for-the-badge&logo=tailwindcss&logoColor=white)](https://tailwindcss.com)
 [![SQLite](https://img.shields.io/badge/SQLite-SQLModel-003B57?style=for-the-badge&logo=sqlite&logoColor=white)](https://sqlmodel.tiangolo.com)
 [![Azure OpenAI](https://img.shields.io/badge/Azure_OpenAI-EPAM_DIAL-0078D4?style=for-the-badge&logo=microsoftazure&logoColor=white)](https://azure.microsoft.com)
 [![Gemini](https://img.shields.io/badge/Google_Gemini-2.0_Flash-4285F4?style=for-the-badge&logo=google&logoColor=white)](https://ai.google.dev)
@@ -33,6 +37,7 @@
 &nbsp;&nbsp;[📁 Repository Structure](#-repository-structure)
 &nbsp;&nbsp;[📄 File Descriptions](#-file-descriptions)
 &nbsp;&nbsp;[🔌 API Endpoints](#-api-endpoints)
+&nbsp;&nbsp;[🖥️ Frontend UI](#️-frontend-ui)
 &nbsp;&nbsp;[⚙️ Getting Started](#️-getting-started)
 &nbsp;&nbsp;[🔐 Environment Variables](#-environment-variables)
 &nbsp;&nbsp;[🧰 Tech Stack](#-tech-stack)
@@ -53,6 +58,8 @@ A **Retrieval-Augmented Generation (RAG) pipeline** powers the risk-assessment e
 An **OPA (Open Policy Agent) ethical-gate layer** enforces hard policy constraints: Rego rules automatically block projects that contain hardcoded secrets or carry high-severity risks. The `OPAGatekeeper` async client integrates the OPA REST API directly into the Python backend, and a companion bash script (`eval_gates.sh`) enables CLI-based gate evaluation with mock inputs.
 
 A **full end-to-end assessment pipeline** ties everything together: `POST /api/v1/assess` accepts a PDF path and GitHub URL, creates a tracked job in SQLite, and immediately returns a UUID. A background task sequentially runs **Ingestion** (Git clone + Gitleaks + PDF parsing), **RAG** (embedding → policy search → GPT-4o risk analysis), **Trust Scoring** (algorithmic score with Critical/High/Medium/Low/secret penalties, case-insensitive), and **OPA gate evaluation**. Poll `GET /api/v1/assess/{job_id}` for results — **202** while processing, **200** with the full report when complete.
+
+A **React + TypeScript frontend** built with **Vite** and **Tailwind CSS v4** provides the user interface. The `AssessmentForm` component lets users submit a GitHub URL and PDF document, while the `Dashboard` component polls the backend for results and renders the final **Trust Score** as a colour-coded circular gauge (**green** > 80, **yellow** > 50, **red** ≤ 50). The UI uses **Axios** for API communication, **Lucide React** for icons, and **Recharts** for future data visualisation.
 
 > [!NOTE]
 > The platform is designed for **zero-downtime AI inference** — if one provider goes down, the other takes over automatically.
@@ -81,6 +88,13 @@ A **full end-to-end assessment pipeline** ties everything together: `POST /api/v
 | 🎯 | **Trust Scoring** | Algorithmic score (100 → 0) penalising Critical (−50), High (−25), Medium (−10) risks & secrets (−15 each) |
 | 🔄 | **Async Assessment** | Background pipeline with job tracking (Processing → Complete / Failed) |
 | 🛡️ | **Type-Safe** | Pydantic models for all request/response schemas |
+| ⚛️ | **React Frontend** | Vite + React 19 + TypeScript SPA |
+| 🎨 | **Tailwind CSS v4** | Utility-first styling with `@tailwindcss/vite` plugin |
+| 📊 | **Trust Score Gauge** | SVG circular gauge — green / yellow / red thresholds |
+| 📝 | **Assessment Form** | Card-based form with GitHub URL + PDF file upload |
+| 🔄 | **Live Polling** | Dashboard polls every 3s until job completes |
+| 🧩 | **Lucide Icons** | Modern icon library integrated throughout the UI |
+| 📈 | **Recharts Ready** | Chart library installed for future data visualisation |
 
 ---
 
@@ -240,6 +254,44 @@ flowchart TD
     DB -.-> POLL
 ```
 
+### ⚛️ Frontend UI Flow
+
+```mermaid
+flowchart TD
+    classDef uiStyle fill:#1e293b,stroke:#60a5fa,stroke-width:2px,color:#f8fafc
+    classDef formStyle fill:#4f46e5,stroke:#818cf8,stroke-width:2px,color:#f8fafc
+    classDef apiStyle fill:#0f766e,stroke:#2dd4bf,stroke-width:2px,color:#f8fafc
+    classDef pollStyle fill:#b45309,stroke:#fbbf24,stroke-width:2px,color:#f8fafc
+    classDef greenStyle fill:#15803d,stroke:#4ade80,stroke-width:2px,color:#f8fafc
+    classDef yellowStyle fill:#a16207,stroke:#fbbf24,stroke-width:2px,color:#f8fafc
+    classDef redStyle fill:#b91c1c,stroke:#f87171,stroke-width:2px,color:#f8fafc
+    classDef stateStyle fill:#374151,stroke:#9ca3af,stroke-width:2px,color:#f8fafc
+
+    UI["🖥️ React SPA<br><code>Vite + Tailwind CSS</code>"]:::uiStyle
+    FORM["📝 AssessmentForm<br>GitHub URL + PDF Upload"]:::formStyle
+    POST["📡 Axios POST<br><code>/api/v1/assess</code>"]:::apiStyle
+    JOB["🔑 Save job_id<br>to React state"]:::stateStyle
+    DASH["📊 Dashboard Component<br>receives job_id prop"]:::uiStyle
+    POLL["🔄 useEffect Poll<br><code>GET /assess/{job_id}</code><br>every 3 seconds"]:::pollStyle
+    PROC["⏳ Processing…<br>animated spinner"]:::stateStyle
+    SCORE["🎯 Trust Score Gauge<br>SVG circular ring"]:::uiStyle
+    GREEN["🟢 Score > 80<br>High Trust"]:::greenStyle
+    YELLOW["🟡 Score > 50<br>Medium Trust"]:::yellowStyle
+    RED["🔴 Score ≤ 50<br>Low Trust"]:::redStyle
+
+    UI --> FORM
+    FORM -->|"submit"| POST
+    POST -->|"{ job_id }"| JOB
+    JOB --> DASH
+    DASH --> POLL
+    POLL -->|"202 Accepted"| PROC
+    PROC -->|"retry 3s"| POLL
+    POLL -->|"200 Complete"| SCORE
+    SCORE --> GREEN
+    SCORE --> YELLOW
+    SCORE --> RED
+```
+
 ---
 
 ## 📁 Repository Structure
@@ -298,7 +350,24 @@ aerae-accelerator/
 │       ├── 📄 test_assess.py    #       🆕 POST /assess endpoint test (1 test)
 │       └── 📄 test_get_assess.py#       🆕 GET /assess/{job_id} tests (3 tests)
 │
-├── 📂 frontend/                 # 🎨 Frontend application (placeholder)
+├── 🎨 frontend/                 # ── React + Vite Frontend ────────────────
+│   ├── 📄 package.json          #    npm dependencies & scripts
+│   ├── 📄 vite.config.ts        #    Vite config (React + Tailwind CSS plugins)
+│   ├── 📄 tsconfig.json         #    Root TypeScript config (project references)
+│   ├── 📄 tsconfig.app.json     #    App-level TypeScript config
+│   ├── 📄 tsconfig.node.json    #    Node/Vite TypeScript config
+│   ├── 📄 eslint.config.js      #    ESLint flat config (React hooks + refresh)
+│   ├── 📄 index.html             #    SPA entry point (Vite injects <script>)
+│   │
+│   └── 📂 src/                  #    Application source code
+│       ├── 📄 main.tsx          #       React root render (StrictMode)
+│       ├── 📄 App.tsx           #       App shell – routes AssessmentForm → Dashboard
+│       ├── 📄 index.css         #       Tailwind CSS v4 entry (`@import "tailwindcss"`)
+│       ├── 📄 App.css           #       (Vite default — unused)
+│       │
+│       └── 📂 components/       #       🧩 React UI components
+│           ├── 📄 AssessmentForm.tsx  # 📝 GitHub URL + PDF upload form
+│           └── 📄 Dashboard.tsx       # 📊 Polling + Trust Score circular gauge
 ├── 📂 infra/                    # ☁️  Infrastructure-as-Code (placeholder)
 │
 ├── 📂 policies/                 # 🏛️ OPA Rego policies & evaluation tooling
@@ -409,6 +478,22 @@ aerae-accelerator/
 | `policies/eval_gates.sh` | **OPA evaluation script.** Bash script that runs `opa eval` against `risk_gates.rego` for one or more input JSON files. Supports per-file or batch mode. Colour-coded PASS/FAIL output. |
 | `policies/mock_input_pass.json` | **Passing mock input.** 0 secrets, 2 risks (low + medium severity) — passes the ethical gate. |
 | `policies/mock_input_fail.json` | **Failing mock input.** 2 secrets, 2 high-severity risks (Data Privacy + Security) — blocked by the ethical gate. |
+
+</details>
+
+<details>
+<summary><b>🎨 Frontend — React Components</b></summary>
+
+| File | Description |
+|:-----|:------------|
+| `frontend/package.json` | npm project config — declares dependencies (React 19, react-router-dom, axios, lucide-react, recharts) and devDependencies (Vite 7, TypeScript 5.9, Tailwind CSS 4, ESLint). |
+| `frontend/vite.config.ts` | **Vite configuration.** Registers the `@vitejs/plugin-react` and `@tailwindcss/vite` plugins. Enables HMR and Tailwind utility class compilation without separate PostCSS config. |
+| `frontend/index.html` | **SPA entry point.** Minimal HTML shell — Vite injects the React bundle via `<script type="module">` at build time. |
+| `frontend/src/main.tsx` | **React root.** Renders `<App />` inside `<StrictMode>` into `#root`, imports `index.css` for Tailwind. |
+| `frontend/src/App.tsx` | **App shell.** Lifts `jobId` state. Renders `AssessmentForm` with an `onJobCreated` callback; when a job is created, renders `Dashboard` below with that `jobId`. |
+| `frontend/src/index.css` | **Tailwind CSS v4 entry.** Single `@import "tailwindcss"` directive — the `@tailwindcss/vite` plugin handles all utility class generation at build time. |
+| `frontend/src/components/AssessmentForm.tsx` | **Assessment input form.** Card-based layout with a `type="url"` input for GitHub repos, a styled file drop-zone for PDF upload (`accept=".pdf"`), and a "Run Assessment" button. On submit, POSTs to `/api/v1/assess` via Axios (multipart/form-data). Shows loading spinner, error alerts (red), and success banners (green) with the returned `job_id`. Accepts `onJobCreated` callback prop to notify the parent. |
+| `frontend/src/components/Dashboard.tsx` | **Trust Score dashboard.** Receives `jobId` prop. Uses `useEffect` + `setInterval` to poll `GET /api/v1/assess/{job_id}` every 3 seconds. Handles three states: **Processing** (animated spinner), **Failed** (red error card), **Complete** (SVG circular gauge). The gauge ring and background are colour-coded: **green** (score > 80, "High Trust"), **yellow** (score > 50, "Medium Trust"), **red** (score ≤ 50, "Low Trust"). Auto-stops polling on terminal states and cleans up on unmount. |
 
 </details>
 
@@ -541,6 +626,42 @@ curl http://localhost:8000/api/v1/assess/<uuid>
 
 </details>
 
+---
+
+## 🖥️ Frontend UI
+
+### 📝 Assessment Form
+
+A clean, card-based form with a gradient header. Users provide:
+- **GitHub Repository URL** — validated `type="url"` input with a `Github` icon
+- **Architecture PDF** — styled drop-zone with click-to-browse (`accept=".pdf"`)
+- **Run Assessment button** — triggers Axios POST to the backend; shows a spinner during the request
+
+On success, a green banner displays the `job_id` and the `Dashboard` component activates below.
+
+### 📊 Trust Score Dashboard
+
+Polls `GET /api/v1/assess/{job_id}` every 3 seconds until the job reaches a terminal state:
+
+| State | UI |
+|:------|:---|
+| ⏳ Processing | Animated spinner + "Analysing…" message |
+| ✅ Complete | Large SVG circular gauge with score |
+| ❌ Failed | Red error card with reason |
+
+**Score Thresholds:**
+
+| Score Range | Colour | Label |
+|:-----------:|:------:|:------|
+| > 80 | 🟢 Green | High Trust |
+| > 50 | 🟡 Yellow | Medium Trust |
+| ≤ 50 | 🔴 Red | Low Trust |
+
+> [!TIP]
+> The frontend dev server runs on **http://localhost:5173** and proxies API calls to the FastAPI backend at **http://localhost:8000**.
+
+---
+
 ### 🏛️ OPA Ethical Gate
 
 | Method | Path | Description |
@@ -618,6 +739,7 @@ cd policies && bash eval_gates.sh
 > Make sure you have the following installed before proceeding.
 
 - **Python 3.11+** — [Download](https://python.org/downloads)
+- **Node.js 18+** — [Download](https://nodejs.org) or `brew install node`
 - **Poetry** — [Install Guide](https://python-poetry.org/docs/#installation)
 - **Gitleaks** _(optional, for secret scanning)_ — `brew install gitleaks` or [Install Guide](https://github.com/gitleaks/gitleaks#installing)
 - **OPA CLI** _(optional, for policy gate evaluation)_ — `brew install opa` or [Install Guide](https://www.openpolicyagent.org/docs/latest/#1-download-opa)
@@ -659,9 +781,17 @@ bash policies/eval_gates.sh
 # ✘ FAIL — mock_input_fail.json
 ```
 
-### 5️⃣ Run the Server
+### 5️⃣ Install Frontend Dependencies
 
 ```bash
+cd frontend
+npm install          # installs React, Vite, Tailwind, Axios, etc.
+```
+
+### 6️⃣ Run the Backend Server
+
+```bash
+cd backend
 uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
@@ -669,7 +799,18 @@ uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 > 🌐 API live at **http://127.0.0.1:8000**
 > 📚 Interactive docs at **http://127.0.0.1:8000/docs**
 
-### 6️⃣ Running Tests
+### 7️⃣ Run the Frontend Dev Server
+
+```bash
+cd frontend
+npm run dev          # starts Vite at http://localhost:5173
+```
+
+> [!TIP]
+> 🖥️ Frontend live at **http://localhost:5173**
+> ⚡ Hot Module Replacement (HMR) enabled — edits reflect instantly.
+
+### 8️⃣ Running Tests
 
 ```bash
 cd backend
@@ -720,6 +861,16 @@ pytest -v          # 75 tests across 12 modules
 | **Policy Language** | Rego | ![Rego](https://img.shields.io/badge/Rego-566573?style=flat-square&logo=openpolicyagent&logoColor=white) |
 | **Linting** | Ruff | ![Ruff](https://img.shields.io/badge/Ruff-D7FF64?style=flat-square&logo=ruff&logoColor=black) |
 | **Dependency Mgmt** | Poetry | ![Poetry](https://img.shields.io/badge/Poetry-60A5FA?style=flat-square&logo=poetry&logoColor=white) |
+| | | |
+| **Frontend Framework** | React 19 | ![React](https://img.shields.io/badge/React_19-61DAFB?style=flat-square&logo=react&logoColor=black) |
+| **Language** | TypeScript 5.9 | ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=flat-square&logo=typescript&logoColor=white) |
+| **Build Tool** | Vite 7.3 | ![Vite](https://img.shields.io/badge/Vite-646CFF?style=flat-square&logo=vite&logoColor=white) |
+| **Styling** | Tailwind CSS v4 | ![Tailwind](https://img.shields.io/badge/Tailwind_CSS-06B6D4?style=flat-square&logo=tailwindcss&logoColor=white) |
+| **HTTP Client** | Axios | ![Axios](https://img.shields.io/badge/Axios-5A29E4?style=flat-square&logo=axios&logoColor=white) |
+| **Routing** | React Router 7 | ![Router](https://img.shields.io/badge/React_Router-CA4245?style=flat-square&logo=reactrouter&logoColor=white) |
+| **Icons** | Lucide React | ![Lucide](https://img.shields.io/badge/Lucide-F56040?style=flat-square&logo=feather&logoColor=white) |
+| **Charts** | Recharts 3 | ![Recharts](https://img.shields.io/badge/Recharts-22B5BF?style=flat-square&logo=d3dotjs&logoColor=white) |
+| **Frontend Linting** | ESLint (flat config) | ![ESLint](https://img.shields.io/badge/ESLint-4B32C3?style=flat-square&logo=eslint&logoColor=white) |
 
 </div>
 
