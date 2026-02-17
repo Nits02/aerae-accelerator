@@ -59,7 +59,7 @@ An **OPA (Open Policy Agent) ethical-gate layer** enforces hard policy constrain
 
 A **full end-to-end assessment pipeline** ties everything together: `POST /api/v1/assess` accepts a PDF path and GitHub URL, creates a tracked job in SQLite, and immediately returns a UUID. A background task sequentially runs **Ingestion** (Git clone + Gitleaks + PDF parsing), **RAG** (embedding → policy search → GPT-4o risk analysis), **Trust Scoring** (algorithmic score with Critical/High/Medium/Low/secret penalties, case-insensitive), and **OPA gate evaluation**. Poll `GET /api/v1/assess/{job_id}` for results — **202** while processing, **200** with the full report when complete.
 
-A **React + TypeScript frontend** built with **Vite** and **Tailwind CSS v4** provides the user interface. The `AssessmentForm` component lets users submit a GitHub URL and PDF document, while the `Dashboard` component polls the backend for results and renders the final **Trust Score** as a colour-coded circular gauge (**green** > 80, **yellow** > 50, **red** ≤ 50). The UI uses **Axios** for API communication, **Lucide React** for icons, and **Recharts** for future data visualisation.
+A **React + TypeScript frontend** built with **Vite** and **Tailwind CSS v4** provides the user interface. Two-route architecture using **React Router**: `/` renders the `AssessmentForm` for submitting a GitHub URL and PDF document; `/dashboard/:id` renders the `DashboardPage` which polls the backend for results. A dedicated `Scorecard` component displays the final **Trust Score** as a colour-coded circular gauge (**green** > 80, **yellow** > 50, **red** ≤ 50) along with the **Allow / Deny** policy decision from the OPA gate. The UI uses **Axios** for API communication, **Lucide React** icons (including `ShieldCheck` / `ShieldX` for the gate verdict), and **Recharts** for future data visualisation.
 
 > [!NOTE]
 > The platform is designed for **zero-downtime AI inference** — if one provider goes down, the other takes over automatically.
@@ -91,8 +91,10 @@ A **React + TypeScript frontend** built with **Vite** and **Tailwind CSS v4** pr
 | ⚛️ | **React Frontend** | Vite + React 19 + TypeScript SPA |
 | 🎨 | **Tailwind CSS v4** | Utility-first styling with `@tailwindcss/vite` plugin |
 | 📊 | **Trust Score Gauge** | SVG circular gauge — green / yellow / red thresholds |
+| �️ | **Scorecard + Gate Verdict** | Reusable Scorecard component with Allow / Deny policy decision |
 | 📝 | **Assessment Form** | Card-based form with GitHub URL + PDF file upload |
 | 🔄 | **Live Polling** | Dashboard polls every 3s until job completes |
+| 🚦 | **Two-Route SPA** | React Router — `/` (form) and `/dashboard/:id` (results) |
 | 🧩 | **Lucide Icons** | Modern icon library integrated throughout the UI |
 | 📈 | **Recharts Ready** | Chart library installed for future data visualisation |
 
@@ -268,25 +270,29 @@ flowchart TD
     classDef stateStyle fill:#374151,stroke:#9ca3af,stroke-width:2px,color:#f8fafc
 
     UI["🖥️ React SPA<br><code>Vite + Tailwind CSS</code>"]:::uiStyle
-    FORM["📝 AssessmentForm<br>GitHub URL + PDF Upload"]:::formStyle
+    FORM["📝 AssessmentForm<br>GitHub URL + PDF Upload<br><code>Route: /</code>"]:::formStyle
     POST["📡 Axios POST<br><code>/api/v1/assess</code>"]:::apiStyle
-    JOB["🔑 Save job_id<br>to React state"]:::stateStyle
-    DASH["📊 Dashboard Component<br>receives job_id prop"]:::uiStyle
+    NAV["🔀 useNavigate<br><code>/dashboard/{id}</code>"]:::stateStyle
+    DASH["📊 DashboardPage<br><code>Route: /dashboard/:id</code><br>extracts useParams"]:::uiStyle
     POLL["🔄 useEffect Poll<br><code>GET /assess/{job_id}</code><br>every 3 seconds"]:::pollStyle
     PROC["⏳ Processing…<br>animated spinner"]:::stateStyle
+    CARD["🛡️ Scorecard Component<br>score + decision props"]:::uiStyle
     SCORE["🎯 Trust Score Gauge<br>SVG circular ring"]:::uiStyle
-    GREEN["🟢 Score > 80<br>High Trust"]:::greenStyle
+    GATE["🏛️ Policy Decision<br>Allow / Deny pill"]:::uiStyle
+    GREEN["🟢 Score > 80<br>High Trust · Allow"]:::greenStyle
     YELLOW["🟡 Score > 50<br>Medium Trust"]:::yellowStyle
-    RED["🔴 Score ≤ 50<br>Low Trust"]:::redStyle
+    RED["🔴 Score ≤ 50<br>Low Trust · Deny"]:::redStyle
 
     UI --> FORM
     FORM -->|"submit"| POST
-    POST -->|"{ job_id }"| JOB
-    JOB --> DASH
+    POST -->|"{ job_id }"| NAV
+    NAV --> DASH
     DASH --> POLL
     POLL -->|"202 Accepted"| PROC
     PROC -->|"retry 3s"| POLL
-    POLL -->|"200 Complete"| SCORE
+    POLL -->|"200 Complete"| CARD
+    CARD --> SCORE
+    CARD --> GATE
     SCORE --> GREEN
     SCORE --> YELLOW
     SCORE --> RED
@@ -367,7 +373,9 @@ aerae-accelerator/
 │       │
 │       └── 📂 components/       #       🧩 React UI components
 │           ├── 📄 AssessmentForm.tsx  # 📝 GitHub URL + PDF upload form
-│           └── 📄 Dashboard.tsx       # 📊 Polling + Trust Score circular gauge
+│           ├── 📄 Dashboard.tsx       # 📊 Polling + delegates to Scorecard
+│           ├── 📄 DashboardPage.tsx   # 🔀 Route wrapper (extracts :id param)
+│           └── 📄 Scorecard.tsx       # 🛡️ Trust score gauge + Allow/Deny decision
 ├── 📂 infra/                    # ☁️  Infrastructure-as-Code (placeholder)
 │
 ├── 📂 policies/                 # 🏛️ OPA Rego policies & evaluation tooling
@@ -490,10 +498,12 @@ aerae-accelerator/
 | `frontend/vite.config.ts` | **Vite configuration.** Registers the `@vitejs/plugin-react` and `@tailwindcss/vite` plugins. Enables HMR and Tailwind utility class compilation without separate PostCSS config. |
 | `frontend/index.html` | **SPA entry point.** Minimal HTML shell — Vite injects the React bundle via `<script type="module">` at build time. |
 | `frontend/src/main.tsx` | **React root.** Renders `<App />` inside `<StrictMode>` into `#root`, imports `index.css` for Tailwind. |
-| `frontend/src/App.tsx` | **App shell.** Lifts `jobId` state. Renders `AssessmentForm` with an `onJobCreated` callback; when a job is created, renders `Dashboard` below with that `jobId`. |
+| `frontend/src/App.tsx` | **App shell & router.** Uses `BrowserRouter` with two routes: `/` renders `AssessmentForm`, `/dashboard/:id` renders `DashboardPage`. Navigation via `useNavigate()`. |
 | `frontend/src/index.css` | **Tailwind CSS v4 entry.** Single `@import "tailwindcss"` directive — the `@tailwindcss/vite` plugin handles all utility class generation at build time. |
-| `frontend/src/components/AssessmentForm.tsx` | **Assessment input form.** Card-based layout with a `type="url"` input for GitHub repos, a styled file drop-zone for PDF upload (`accept=".pdf"`), and a "Run Assessment" button. On submit, POSTs to `/api/v1/assess` via Axios (multipart/form-data). Shows loading spinner, error alerts (red), and success banners (green) with the returned `job_id`. Accepts `onJobCreated` callback prop to notify the parent. |
-| `frontend/src/components/Dashboard.tsx` | **Trust Score dashboard.** Receives `jobId` prop. Uses `useEffect` + `setInterval` to poll `GET /api/v1/assess/{job_id}` every 3 seconds. Handles three states: **Processing** (animated spinner), **Failed** (red error card), **Complete** (SVG circular gauge). The gauge ring and background are colour-coded: **green** (score > 80, "High Trust"), **yellow** (score > 50, "Medium Trust"), **red** (score ≤ 50, "Low Trust"). Auto-stops polling on terminal states and cleans up on unmount. |
+| `frontend/src/components/AssessmentForm.tsx` | **Assessment input form.** Card-based layout with a `type="url"` input for GitHub repos, a styled file drop-zone for PDF upload (`accept=".pdf"`), and a "Run Assessment" button. On submit, POSTs to `/api/v1/assess` via Axios (multipart/form-data). Shows loading spinner, error alerts (red), and success banners (green) with the returned `job_id`. Uses `useNavigate()` to redirect to `/dashboard/{jobId}` on success. |
+| `frontend/src/components/Dashboard.tsx` | **Polling orchestrator.** Receives `jobId` prop. Uses `useEffect` + `setInterval` to poll `GET /api/v1/assess/{job_id}` every 3 seconds. Handles three states: **Processing** (animated spinner), **Failed** (red error card), **Complete** (delegates to `Scorecard`). Auto-stops polling on terminal states and cleans up on unmount. Falls back to `score > 50 → allow / deny` if the backend omits the decision field. |
+| `frontend/src/components/DashboardPage.tsx` | **Route wrapper.** Extracts the `:id` URL parameter via `useParams` and passes it to `Dashboard` as the `jobId` prop. Shows a "New Assessment" back link with an `ArrowLeft` icon. Handles missing ID gracefully. |
+| `frontend/src/components/Scorecard.tsx` | **Reusable scorecard.** Exported component accepting `{ score, decision }` props. Renders a 180×180 SVG circular gauge with the trust score displayed prominently. Conditional Tailwind styling: **green** (score > 80), **yellow** (score 50–80), **red** (score < 50). Below the score, an **Allow / Deny** pill badge shows the OPA gate verdict with `ShieldCheck` / `ShieldX` lucide-react icons. |
 
 </details>
 
@@ -637,7 +647,7 @@ A clean, card-based form with a gradient header. Users provide:
 - **Architecture PDF** — styled drop-zone with click-to-browse (`accept=".pdf"`)
 - **Run Assessment button** — triggers Axios POST to the backend; shows a spinner during the request
 
-On success, a green banner displays the `job_id` and the `Dashboard` component activates below.
+On success, the user is navigated to `/dashboard/{job_id}` where the `DashboardPage` takes over.
 
 ### 📊 Trust Score Dashboard
 
@@ -646,16 +656,16 @@ Polls `GET /api/v1/assess/{job_id}` every 3 seconds until the job reaches a term
 | State | UI |
 |:------|:---|
 | ⏳ Processing | Animated spinner + "Analysing…" message |
-| ✅ Complete | Large SVG circular gauge with score |
+| ✅ Complete | `Scorecard` component — large SVG circular gauge with score + Allow/Deny verdict |
 | ❌ Failed | Red error card with reason |
 
 **Score Thresholds:**
 
-| Score Range | Colour | Label |
-|:-----------:|:------:|:------|
-| > 80 | 🟢 Green | High Trust |
-| > 50 | 🟡 Yellow | Medium Trust |
-| ≤ 50 | 🔴 Red | Low Trust |
+| Score Range | Colour | Label | Gate Verdict |
+|:-----------:|:------:|:------|:------------:|
+| > 80 | 🟢 Green | High Trust | ✅ Allow |
+| > 50 | 🟡 Yellow | Medium Trust | Contextual |
+| ≤ 50 | 🔴 Red | Low Trust | 🚫 Deny |
 
 > [!TIP]
 > The frontend dev server runs on **http://localhost:5173** and proxies API calls to the FastAPI backend at **http://localhost:8000**.

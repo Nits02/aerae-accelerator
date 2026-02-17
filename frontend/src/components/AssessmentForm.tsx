@@ -1,14 +1,12 @@
 import { useState, useRef, type FormEvent, type ChangeEvent } from "react";
+import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import { Upload, Github, Play, CheckCircle, AlertCircle } from "lucide-react";
 
 const API_URL = "http://localhost:8000/api/v1/assess";
 
-interface AssessmentFormProps {
-  onJobCreated?: (jobId: string) => void;
-}
-
-export default function AssessmentForm({ onJobCreated }: AssessmentFormProps) {
+export default function AssessmentForm() {
+  const navigate = useNavigate();
   const [githubUrl, setGithubUrl] = useState("");
   const [pdfFile, setPdfFile] = useState<File | null>(null);
   const [jobId, setJobId] = useState<string | null>(null);
@@ -58,7 +56,8 @@ export default function AssessmentForm({ onJobCreated }: AssessmentFormProps) {
       }
 
       setJobId(jobIdResult);
-      onJobCreated?.(jobIdResult);
+      // Navigate to the dashboard route
+      navigate(`/dashboard/${jobIdResult}`);
     } catch (err: unknown) {
       if (axios.isAxiosError(err)) {
         setError(err.response?.data?.detail ?? err.message);
@@ -75,7 +74,6 @@ export default function AssessmentForm({ onJobCreated }: AssessmentFormProps) {
     setPdfFile(null);
     setJobId(null);
     setError(null);
-    onJobCreated?.(null as unknown as string);
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
