@@ -35,7 +35,7 @@ export default function Dashboard({ jobId }: DashboardProps) {
     let cancelled = false;
 
     // ── MOCK: hardcoded response for testing (score = 45 → red) ──
-    const MOCK_ENABLED = true;
+    const MOCK_ENABLED = false;
     const MOCK_RESPONSE: PollResponse = {
       job_id: jobId,
       status: "Complete",

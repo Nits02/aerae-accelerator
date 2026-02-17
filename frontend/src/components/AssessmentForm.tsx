@@ -36,21 +36,17 @@ export default function AssessmentForm() {
     setLoading(true);
     try {
       // ── MOCK: skip real API call for testing ──
-      const MOCK_ENABLED = true;
+      const MOCK_ENABLED = false;
 
       let jobIdResult: string;
       if (MOCK_ENABLED) {
         await new Promise((r) => setTimeout(r, 500)); // simulate latency
         jobIdResult = "mock-job-" + crypto.randomUUID().slice(0, 8);
       } else {
-        const formData = new FormData();
-        formData.append("github_url", githubUrl.trim());
-        formData.append("file", pdfFile);
-
         const { data } = await axios.post<{ job_id: string; status: string }>(
           API_URL,
-          formData,
-          { headers: { "Content-Type": "multipart/form-data" } }
+          { pdf_path: pdfFile.name, github_url: githubUrl.trim() },
+          { headers: { "Content-Type": "application/json" } }
         );
         jobIdResult = data.job_id;
       }
