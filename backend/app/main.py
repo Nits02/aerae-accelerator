@@ -171,6 +171,12 @@ async def run_assessment(job_id: str, pdf_path: str, github_url: str) -> None:
             persist_directory=settings.CHROMA_PERSIST_DIRECTORY,
         )
         policy_hits = vector_store.search(query_embedding=embedding)
+        if not policy_hits:
+            logger.warning(
+                "No relevant policies retrieved from the vector store. "
+                "Ensure the database has been seeded. "
+                "Proceeding with LLM analysis without policy grounding."
+            )
         policies = [h["document"] for h in policy_hits]
 
         # 2c. Analyse risk using the AI engine
@@ -193,7 +199,7 @@ async def run_assessment(job_id: str, pdf_path: str, github_url: str) -> None:
         opa_payload = {
             "trust_score": trust_score,
             "risks": risks,
-            "secrets_found": code_metadata.get("secrets_found", 0),
+            "secrets_count": code_metadata.get("secrets_found", 0),
         }
         opa_result = await opa.evaluate_payload(opa_payload)
 
