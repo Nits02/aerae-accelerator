@@ -18,7 +18,8 @@ def test_assess_returns_200_with_uuid():
     with patch("app.main.run_assessment") as mock_bg:
         response = client.post(
             "/api/v1/assess",
-            json={"pdf_path": "/tmp/fake.pdf", "github_url": "https://github.com/owner/repo"},
+            data={"github_url": "https://github.com/owner/repo"},
+            files={"pdf": ("fake.pdf", b"%PDF-1.4 fake content", "application/pdf")},
         )
 
     assert response.status_code == 200

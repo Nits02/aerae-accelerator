@@ -1,17 +1,17 @@
 """PDF parser service – extracts structured project metadata from PDF files.
 
-Tries Azure OpenAI first (base64-encoded PDF in chat completion).
-Falls back to Google Gemini (genai.upload_file) on failure.
+Extracts text from the PDF using pypdf, then sends the text to Azure OpenAI
+(chat completion) for structured analysis. Falls back to Google Gemini on failure.
 Returns a strict JSON dict with project purpose, data types, and risks.
 """
 
-import base64
 import json
 import logging
 from pathlib import Path
 
 from google import genai
 from openai import AzureOpenAI
+from pypdf import PdfReader
 
 from app.core.config import settings
 
@@ -31,8 +31,8 @@ AZURE_DEPLOYMENT = settings.AZURE_OPENAI_DEPLOYMENT_NAME
 GEMINI_MODEL = "gemini-2.0-flash-lite"
 
 EXTRACTION_PROMPT = """\
-You are a document analysis assistant. Analyse the attached PDF and extract
-the following information into **strict JSON** (no markdown fences, no extra keys):
+You are a document analysis assistant. Analyse the following document text
+and extract the information into **strict JSON** (no markdown fences, no extra keys):
 
 {
   "project_purpose": "<concise summary of the project's purpose>",
@@ -59,12 +59,20 @@ def _read_pdf_bytes(file_path: str) -> bytes:
     return path.read_bytes()
 
 
-# ── Azure OpenAI approach ────────────────────────────────────
-def _extract_via_azure(pdf_bytes: bytes, filename: str) -> dict:
-    """Send base64-encoded PDF to Azure OpenAI and parse the JSON response."""
-    b64 = base64.standard_b64encode(pdf_bytes).decode("utf-8")
-    data_uri = f"data:application/pdf;base64,{b64}"
+def _extract_text(file_path: str) -> str:
+    """Extract plain text from a PDF using pypdf."""
+    reader = PdfReader(file_path)
+    pages = [page.extract_text() or "" for page in reader.pages]
+    text = "\n".join(pages).strip()
+    if not text:
+        raise ValueError("PDF contains no extractable text.")
+    # Truncate to ~12 000 chars to stay within token limits
+    return text[:12_000]
 
+
+# ── Azure OpenAI approach ────────────────────────────────────
+def _extract_via_azure(pdf_text: str) -> dict:
+    """Send extracted PDF text to Azure OpenAI and parse the JSON response."""
     response = _azure_client.chat.completions.create(
         model=AZURE_DEPLOYMENT,
         messages=[
@@ -74,19 +82,7 @@ def _extract_via_azure(pdf_bytes: bytes, filename: str) -> dict:
             },
             {
                 "role": "user",
-                "content": [
-                    {
-                        "type": "file",
-                        "file": {
-                            "filename": filename,
-                            "file_data": data_uri,
-                        },
-                    },
-                    {
-                        "type": "text",
-                        "text": EXTRACTION_PROMPT,
-                    },
-                ],
+                "content": f"{EXTRACTION_PROMPT}\n\n--- DOCUMENT TEXT ---\n{pdf_text}",
             },
         ],
     )
@@ -95,12 +91,11 @@ def _extract_via_azure(pdf_bytes: bytes, filename: str) -> dict:
 
 
 # ── Gemini approach ──────────────────────────────────────────
-def _extract_via_gemini(file_path: str) -> dict:
-    """Upload the PDF to Gemini with genai.upload_file and extract metadata."""
-    uploaded = _gemini_client.files.upload(file=file_path)
+def _extract_via_gemini(pdf_text: str) -> dict:
+    """Send extracted PDF text to Gemini and parse the JSON response."""
     response = _gemini_client.models.generate_content(
         model=GEMINI_MODEL,
-        contents=[uploaded, EXTRACTION_PROMPT],
+        contents=[f"{EXTRACTION_PROMPT}\n\n--- DOCUMENT TEXT ---\n{pdf_text}"],
     )
     raw = response.text.strip()
     return _parse_json(raw)
@@ -147,11 +142,12 @@ def parse_pdf(file_path: str) -> dict:
         }
     """
     pdf_bytes = _read_pdf_bytes(file_path)
+    pdf_text = _extract_text(file_path)
     filename = Path(file_path).name
 
     # --- Try Azure OpenAI first ---
     try:
-        result = _extract_via_azure(pdf_bytes, filename)
+        result = _extract_via_azure(pdf_text)
         result["source"] = "azure-openai"
         result["fallback_used"] = False
         result["fallback_reason"] = None
@@ -163,7 +159,7 @@ def parse_pdf(file_path: str) -> dict:
 
     # --- Fallback to Gemini ---
     try:
-        result = _extract_via_gemini(file_path)
+        result = _extract_via_gemini(pdf_text)
         result["source"] = "gemini"
         result["fallback_used"] = True
         result["fallback_reason"] = f"Azure OpenAI unavailable: {azure_error}"

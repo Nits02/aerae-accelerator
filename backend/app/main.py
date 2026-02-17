@@ -1,10 +1,11 @@
 import json
 import logging
+import tempfile
 import uuid as uuid_mod
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import BackgroundTasks, FastAPI, HTTPException
+from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -52,23 +53,30 @@ async def health_check():
 
 
 # ── Assessment endpoint ──────────────────────────────────────
-class AssessRequest(BaseModel):
-    pdf_path: str
-    github_url: str
-
-
 class AssessResponse(BaseModel):
     job_id: str
     status: str
 
 
 @app.post("/api/v1/assess", response_model=AssessResponse, tags=["assess"])
-async def assess(body: AssessRequest, background_tasks: BackgroundTasks):
+async def assess(
+    background_tasks: BackgroundTasks,
+    github_url: str = Form(...),
+    pdf: UploadFile = File(...),
+):
     """Start an assessment job.
 
-    Creates a DB record with *Processing* status, kicks off a background
-    pipeline, and returns the job UUID immediately.
+    Accepts a GitHub URL (form field) and a PDF file upload.
+    Saves the PDF to a temp directory, creates a DB record with
+    *Processing* status, kicks off a background pipeline, and
+    returns the job UUID immediately.
     """
+    # Save uploaded PDF to a temp file so the pipeline can read it
+    tmp_dir = tempfile.mkdtemp(prefix="aerae_")
+    pdf_path = str(Path(tmp_dir) / pdf.filename)
+    with open(pdf_path, "wb") as f:
+        f.write(await pdf.read())
+
     job = AssessmentJob(status="Processing")
     with Session(engine) as session:
         session.add(job)
@@ -76,7 +84,7 @@ async def assess(body: AssessRequest, background_tasks: BackgroundTasks):
         session.refresh(job)
         job_id = str(job.id)
 
-    background_tasks.add_task(run_assessment, job_id, body.pdf_path, body.github_url)
+    background_tasks.add_task(run_assessment, job_id, pdf_path, github_url)
     return AssessResponse(job_id=job_id, status="Processing")
 
 

@@ -21,6 +21,7 @@
 [![OPA](https://img.shields.io/badge/OPA-Rego_Policy_Gates-7D7D7D?style=for-the-badge&logo=openpolicyagent&logoColor=white)](https://www.openpolicyagent.org)
 [![GitPython](https://img.shields.io/badge/GitPython-3.1+-F05032?style=for-the-badge&logo=git&logoColor=white)](https://gitpython.readthedocs.io)
 [![Gitleaks](https://img.shields.io/badge/Gitleaks-Secret_Scanning-FF6347?style=for-the-badge&logo=openbugbounty&logoColor=white)](https://github.com/gitleaks/gitleaks)
+[![pypdf](https://img.shields.io/badge/pypdf-5+-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://pypdf.readthedocs.io)
 
 <br>
 
@@ -57,9 +58,9 @@ A **Retrieval-Augmented Generation (RAG) pipeline** powers the risk-assessment e
 
 An **OPA (Open Policy Agent) ethical-gate layer** enforces hard policy constraints: Rego rules automatically block projects that contain hardcoded secrets or carry high-severity risks. The `OPAGatekeeper` async client integrates the OPA REST API directly into the Python backend, and a companion bash script (`eval_gates.sh`) enables CLI-based gate evaluation with mock inputs.
 
-A **full end-to-end assessment pipeline** ties everything together: `POST /api/v1/assess` accepts a PDF path and GitHub URL, creates a tracked job in SQLite, and immediately returns a UUID. A background task sequentially runs **Ingestion** (Git clone + Gitleaks + PDF parsing), **RAG** (embedding → policy search → GPT-4o risk analysis), **Trust Scoring** (algorithmic score with Critical/High/Medium/Low/secret penalties, case-insensitive), and **OPA gate evaluation**. Poll `GET /api/v1/assess/{job_id}` for results — **202** while processing, **200** with the full report when complete.
+A **full end-to-end assessment pipeline** ties everything together: `POST /api/v1/assess` accepts a **PDF file upload** and **GitHub URL** via `multipart/form-data`, creates a tracked job in SQLite, and immediately returns a UUID. The uploaded PDF is saved to a temporary directory so the background pipeline can process it. A background task sequentially runs **Ingestion** (Git clone + Gitleaks + PDF parsing), **RAG** (embedding → policy search → GPT-4o risk analysis), **Trust Scoring** (algorithmic score with Critical/High/Medium/Low/secret penalties, case-insensitive), and **OPA gate evaluation**. Poll `GET /api/v1/assess/{job_id}` for results — **202** while processing, **200** with the full report when complete.
 
-A **React + TypeScript frontend** built with **Vite** and **Tailwind CSS v4** provides the user interface. Two-route architecture using **React Router**: `/` renders the `AssessmentForm` for submitting a GitHub URL and PDF document; `/dashboard/:id` renders the `DashboardPage` which polls the backend for results. A dedicated `Scorecard` component displays the final **Trust Score** as a colour-coded circular gauge (**green** > 80, **yellow** > 50, **red** ≤ 50) along with the **Allow / Deny** policy decision from the OPA gate. The UI uses **Axios** for API communication, **Lucide React** icons (including `ShieldCheck` / `ShieldX` for the gate verdict), and **Recharts** for future data visualisation.
+A **React + TypeScript frontend** built with **Vite** and **Tailwind CSS v4** provides the user interface. Two-route architecture using **React Router**: `/` renders the `AssessmentForm` for submitting a GitHub URL and uploading a PDF file (sent as `multipart/form-data`); `/dashboard/:id` renders the `DashboardPage` which polls the backend for results. A dedicated `Scorecard` component displays the final **Trust Score** as a colour-coded circular gauge (**green** > 80, **yellow** > 50, **red** ≤ 50) along with the **Allow / Deny** policy decision from the OPA gate. The UI uses **Axios** for API communication, **Lucide React** icons (including `ShieldCheck` / `ShieldX` for the gate verdict), and **Recharts** for future data visualisation.
 
 > [!NOTE]
 > The platform is designed for **zero-downtime AI inference** — if one provider goes down, the other takes over automatically.
@@ -75,7 +76,7 @@ A **React + TypeScript frontend** built with **Vite** and **Tailwind CSS v4** pr
 | 🧠 | **RAG Pipeline** | Embed policies in ChromaDB, retrieve by similarity, feed to GPT-4o |
 | 📊 | **Risk Analysis** | Structured JSON risk assessment (category / severity / reason) via GPT-4o |
 | 🔢 | **Embeddings** | Azure OpenAI `text-embedding-3-small` for semantic search |
-| 📝 | **PDF Parsing** | Extract project purpose, data types & risks from PDFs via AI |
+| 📝 | **PDF Parsing** | Extract text from PDFs via **pypdf**, then analyse with AI for project purpose, data types & risks |
 | 🔎 | **Git Scanning** | Clone repos, list files & detect languages automatically |
 | 🛡️ | **Secret Detection** | Gitleaks CLI integration to find hardcoded credentials |
 | 📦 | **Project Ingestion** | Unified `/ingest` endpoint merging PDF + Git into `ProjectArtifact` |
@@ -150,7 +151,7 @@ flowchart TD
     L["🔎 Git Scanner<br><code>git_scanner.py</code><br>Clone → List Files"]:::serviceStyle
     M["🛡️ Gitleaks Scan<br><code>scan_secrets()</code>"]:::scanStyle
     N{{"📄 PDF<br>Uploaded?"}}:::serviceStyle
-    O["📝 PDF Parser<br><code>pdf_parser.py</code><br>Azure → Gemini fallback"]:::azureStyle
+    O["📝 PDF Parser<br><code>pdf_parser.py</code><br>pypdf text → Azure → Gemini"]:::azureStyle
     P["📦 Merge into<br><code>ProjectArtifact</code>"]:::successStyle
 
     J --> K
@@ -230,14 +231,14 @@ flowchart TD
     classDef scoreStyle fill:#15803d,stroke:#4ade80,stroke-width:2px,color:#f8fafc
     classDef opaStyle fill:#b91c1c,stroke:#f87171,stroke-width:2px,color:#f8fafc
 
-    REQ["🌐 POST /api/v1/assess<br>pdf_path + github_url"]:::clientStyle
+    REQ["🌐 POST /api/v1/assess<br>PDF file + github_url<br>(multipart/form-data)"]:::clientStyle
     API["⚡ Create AssessmentJob<br>status = Processing"]:::apiStyle
     UUID["🔑 Return UUID<br>200 OK (immediate)"]:::clientStyle
     BG["⏳ Background Task"]:::dbStyle
 
     I1["🔎 GitScanner<br>clone + list files"]:::ingestStyle
     I2["🛡️ Gitleaks<br>scan_secrets()"]:::ingestStyle
-    I3["📝 PDF Parser<br>Azure → Gemini fallback"]:::ingestStyle
+    I3["📝 PDF Parser<br>pypdf text → Azure → Gemini"]:::ingestStyle
 
     R1["🔢 get_embedding()<br>project description"]:::ragStyle
     R2["🔍 PolicyVectorStore<br>search top-3"]:::ragStyle
@@ -407,8 +408,8 @@ aerae-accelerator/
 
 | File | Description |
 |:-----|:------------|
-| `backend/pyproject.toml` | Poetry project config — declares dependencies (FastAPI, uvicorn, SQLModel, google-genai, openai, chromadb, pydantic-settings, gitpython, python-multipart) and dev tools (pytest, httpx, ruff). |
-| `backend/app/main.py` | **FastAPI app entry point.** Initializes the app, registers the API router under `/api/v1`, sets up a lifespan handler that auto-creates database tables on startup, exposes a `/health` liveness probe, and hosts `POST /api/v1/assess` (create assessment job) and `GET /api/v1/assess/{job_id}` (poll results). Contains the full background `run_assessment` pipeline (Ingestion → RAG → Scoring → OPA). Includes a diagnostic warning when ChromaDB returns no policy matches, and sends the correct `secrets_count` field to OPA Rego rules. |
+| `backend/pyproject.toml` | Poetry project config — declares dependencies (FastAPI, uvicorn, SQLModel, google-genai, openai, chromadb, pydantic-settings, gitpython, python-multipart, **pypdf**) and dev tools (pytest, httpx, ruff). |
+| `backend/app/main.py` | **FastAPI app entry point.** Initializes the app, registers the API router under `/api/v1`, adds **CORSMiddleware** (allows `localhost:5173`), sets up a lifespan handler that auto-creates database tables on startup, exposes a `/health` liveness probe, and hosts `POST /api/v1/assess` (accepts **PDF file upload + GitHub URL** via `multipart/form-data`, saves the PDF to a temp directory) and `GET /api/v1/assess/{job_id}` (poll results). Contains the full background `run_assessment` pipeline (Ingestion → RAG → Scoring → OPA). Includes a diagnostic warning when ChromaDB returns no policy matches, and sends the correct `secrets_count` field to OPA Rego rules. |
 | `backend/app/core/config.py` | **Pydantic Settings class.** Securely loads all environment variables from the root-level `.env` file. Manages keys for Azure OpenAI, Gemini, database URL, ChromaDB path, and app settings. |
 | `backend/app/core/db.py` | **Database engine.** Creates a SQLModel/SQLAlchemy engine connected to SQLite (`aerae_local.db`). Defines the `AssessmentJob` model (UUID primary key, status, result JSON). Provides `create_db_and_tables()` called at startup to auto-create all registered model tables. |
 | `backend/app/core/scoring.py` | **Trust-score calculator.** `calculate_trust_score(risks, secrets)` starts at 100 points, subtracts 50 per Critical, 25 per High, 10 per Medium, and 0 per Low risk, plus 15 per secret. Uses `.lower().strip()` for case-insensitive severity matching. Clamps the result to a minimum of 0. |
@@ -431,7 +432,7 @@ aerae-accelerator/
 |:-----|:------------|
 | `backend/app/services/gemini_service.py` | **Google Gemini wrapper.** Initializes a `genai.Client` with the API key and exposes `generate_content(prompt)` using the `gemini-2.0-flash-lite` model. |
 | `backend/app/services/azure_openai_service.py` | **Azure OpenAI wrapper.** Initializes an `AzureOpenAI` client pointed at the EPAM DIAL proxy and exposes `chat_completion(prompt)` using the `gpt-4o-mini-2024-07-18` deployment. |
-| `backend/app/services/pdf_parser.py` | **PDF metadata extractor.** Reads a PDF file, sends it to Azure OpenAI (base64) or Gemini (`genai.upload_file`) as fallback, and extracts `project_purpose`, `data_types_used`, and `potential_risks` into strict JSON. |
+| `backend/app/services/pdf_parser.py` | **PDF metadata extractor.** Uses **pypdf** to extract plain text from uploaded PDFs, then sends the text to Azure OpenAI (chat completion) or Gemini (text-based) as fallback. Extracts `project_purpose`, `data_types_used`, and `potential_risks` into strict JSON. Truncates text to ~12 000 chars for token safety. |
 | `backend/app/services/git_scanner.py` | **Git repository scanner.** Clones public HTTPS repos via GitPython into temp directories, lists files, detects extensions, and runs Gitleaks CLI for secret detection. Includes `cleanup()` for safe directory removal. |
 | `backend/app/services/ai_engine.py` | **Async Azure AI engine.** Initializes `AsyncAzureOpenAI` client. Provides `get_embedding(text)` using `text-embedding-3-small` (1536-dim vectors) and `analyze_risk(project_json, policies)` which calls GPT-4o with `response_format={"type": "json_object"}` to return structured risk assessments (category / severity / reason). |
 | `backend/app/services/vector_store.py` | **ChromaDB policy vector store.** Persistent `PersistentClient` saving to `./chroma_data`. Manages the `ai_policies` collection with `add_policy(id, text, embedding)`, `search(query_embedding, top_k)`, and `get_relevant_policies(project_description)` which embeds the description and returns top-k nearest policy texts. |
@@ -500,7 +501,7 @@ aerae-accelerator/
 | `frontend/src/main.tsx` | **React root.** Renders `<App />` inside `<StrictMode>` into `#root`, imports `index.css` for Tailwind. |
 | `frontend/src/App.tsx` | **App shell & router.** Uses `BrowserRouter` with two routes: `/` renders `AssessmentForm`, `/dashboard/:id` renders `DashboardPage`. Navigation via `useNavigate()`. |
 | `frontend/src/index.css` | **Tailwind CSS v4 entry.** Single `@import "tailwindcss"` directive — the `@tailwindcss/vite` plugin handles all utility class generation at build time. |
-| `frontend/src/components/AssessmentForm.tsx` | **Assessment input form.** Card-based layout with a `type="url"` input for GitHub repos, a styled file drop-zone for PDF upload (`accept=".pdf"`), and a "Run Assessment" button. On submit, POSTs to `/api/v1/assess` via Axios (multipart/form-data). Shows loading spinner, error alerts (red), and success banners (green) with the returned `job_id`. Uses `useNavigate()` to redirect to `/dashboard/{jobId}` on success. |
+| `frontend/src/components/AssessmentForm.tsx` | **Assessment input form.** Card-based layout with a `type="url"` input for GitHub repos, a styled file drop-zone for PDF upload (`accept=".pdf"`), and a "Run Assessment" button. On submit, builds a `FormData` object and POSTs to `/api/v1/assess` via Axios (`multipart/form-data`). Shows loading spinner, error alerts (red), and success banners (green) with the returned `job_id`. Uses `useNavigate()` to redirect to `/dashboard/{jobId}` on success. |
 | `frontend/src/components/Dashboard.tsx` | **Polling orchestrator.** Receives `jobId` prop. Uses `useEffect` + `setInterval` to poll `GET /api/v1/assess/{job_id}` every 3 seconds. Handles three states: **Processing** (animated spinner), **Failed** (red error card), **Complete** (delegates to `Scorecard`). Auto-stops polling on terminal states and cleans up on unmount. Falls back to `score > 50 → allow / deny` if the backend omits the decision field. |
 | `frontend/src/components/DashboardPage.tsx` | **Route wrapper.** Extracts the `:id` URL parameter via `useParams` and passes it to `Dashboard` as the `jobId` prop. Shows a "New Assessment" back link with an `ArrowLeft` icon. Handles missing ID gracefully. |
 | `frontend/src/components/Scorecard.tsx` | **Reusable scorecard.** Exported component accepting `{ score, decision }` props. Renders a 180×180 SVG circular gauge with the trust score displayed prominently. Conditional Tailwind styling: **green** (score > 80), **yellow** (score 50–80), **red** (score < 50). Below the score, an **Allow / Deny** pill badge shows the OPA gate verdict with `ShieldCheck` / `ShieldX` lucide-react icons. |
@@ -536,7 +537,7 @@ aerae-accelerator/
 
 | Method | Path | Description |
 |:------:|:-----|:------------|
-| ![POST](https://img.shields.io/badge/POST-3B82F6?style=flat-square) | `/api/v1/assess` | **Start assessment** — Accepts `{pdf_path, github_url}`, creates a tracked job, returns UUID immediately (200). Background task runs: Ingestion → RAG → Scoring → OPA. |
+| ![POST](https://img.shields.io/badge/POST-3B82F6?style=flat-square) | `/api/v1/assess` | **Start assessment** — Accepts **PDF file upload** + **GitHub URL** via `multipart/form-data`, saves the PDF to a temp directory, creates a tracked job, returns UUID immediately (200). Background task runs: Ingestion → RAG → Scoring → OPA. |
 | ![GET](https://img.shields.io/badge/GET-22C55E?style=flat-square) | `/api/v1/assess/{job_id}` | **Poll results** — Returns **202 Accepted** while processing, **200 OK** with full risk report, trust score & OPA decision when complete, **404** if UUID not found. |
 
 <details>
@@ -560,6 +561,22 @@ aerae-accelerator/
   "response": "AI learns patterns from data to make predictions.",
   "fallback_used": false,               // true if Azure was used as fallback
   "fallback_reason": null               // explains why fallback was triggered
+}
+```
+
+#### Assess — Request (multipart/form-data)
+
+| Field | Type | Required | Description |
+|:------|:-----|:--------:|:------------|
+| `github_url` | string | ✅ | HTTPS URL of the public GitHub repo |
+| `pdf` | file | ✅ | PDF document to analyse (architecture / design doc) |
+
+#### Assess — Response Body
+
+```json
+{
+  "job_id": "<uuid>",
+  "status": "Processing"
 }
 ```
 
@@ -623,10 +640,10 @@ curl -X POST http://localhost:8000/api/v1/ingest \
 # Health check
 curl http://localhost:8000/health
 
-# Start an assessment job
+# Start an assessment job (multipart/form-data — PDF file + GitHub URL)
 curl -X POST http://localhost:8000/api/v1/assess \
-  -H "Content-Type: application/json" \
-  -d '{"pdf_path": "/path/to/doc.pdf", "github_url": "https://github.com/owner/repo"}'
+  -F "github_url=https://github.com/owner/repo" \
+  -F "pdf=@/path/to/doc.pdf"
 # → {"job_id": "<uuid>", "status": "Processing"}
 
 # Poll for results
@@ -869,6 +886,7 @@ pytest -v          # 75 tests across 12 modules
 | **Testing** | Pytest + HTTPX + AsyncMock | ![Pytest](https://img.shields.io/badge/Pytest-0A9EDC?style=flat-square&logo=pytest&logoColor=white) |
 | **Policy Engine** | Open Policy Agent (OPA) | ![OPA](https://img.shields.io/badge/OPA-7D7D7D?style=flat-square&logo=openpolicyagent&logoColor=white) |
 | **Policy Language** | Rego | ![Rego](https://img.shields.io/badge/Rego-566573?style=flat-square&logo=openpolicyagent&logoColor=white) |
+| **PDF Text Extraction** | pypdf 5+ | ![pypdf](https://img.shields.io/badge/pypdf-5+-3776AB?style=flat-square&logo=python&logoColor=white) |
 | **Linting** | Ruff | ![Ruff](https://img.shields.io/badge/Ruff-D7FF64?style=flat-square&logo=ruff&logoColor=black) |
 | **Dependency Mgmt** | Poetry | ![Poetry](https://img.shields.io/badge/Poetry-60A5FA?style=flat-square&logo=poetry&logoColor=white) |
 | | | |
