@@ -1,10 +1,14 @@
 import json
 import logging
+import shutil
+import subprocess
 import tempfile
+import time
 import uuid as uuid_mod
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+import httpx
 from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -17,12 +21,59 @@ from app.core.db import AssessmentJob, create_db_and_tables, engine
 
 logger = logging.getLogger(__name__)
 
+# Resolve the Rego policy file (relative to project root)
+POLICIES_DIR = Path(__file__).resolve().parents[2] / "policies"
+REGO_FILE = POLICIES_DIR / "risk_gates.rego"
+
+
+def _start_opa_server() -> subprocess.Popen | None:
+    """Start OPA as a background subprocess if the binary and policy exist."""
+    opa_bin = shutil.which("opa")
+    if not opa_bin:
+        logger.warning("OPA binary not found on PATH – skipping OPA server")
+        return None
+
+    if not REGO_FILE.exists():
+        logger.warning("Rego policy file not found at %s – skipping OPA server", REGO_FILE)
+        return None
+
+    proc = subprocess.Popen(
+        [opa_bin, "run", "--server", "--addr", "127.0.0.1:8181", str(REGO_FILE)],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+
+    # Wait briefly for OPA to become healthy
+    for attempt in range(15):
+        time.sleep(0.5)
+        if proc.poll() is not None:
+            logger.error("OPA process exited unexpectedly with code %d", proc.returncode)
+            return None
+        try:
+            resp = httpx.get("http://127.0.0.1:8181/health", timeout=2.0)
+            if resp.status_code == 200:
+                logger.info("OPA server started (PID %d) and healthy", proc.pid)
+                return proc
+        except (httpx.ConnectError, httpx.ConnectTimeout):
+            pass
+
+    logger.error("OPA server started but failed to become healthy within 7.5 s")
+    proc.terminate()
+    return None
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Startup: create DB tables. Shutdown: cleanup (if needed)."""
+    """Startup: create DB tables, start OPA. Shutdown: stop OPA."""
     create_db_and_tables()
+
+    opa_proc = _start_opa_server()
     yield
+    # Shutdown: stop OPA if we started it
+    if opa_proc and opa_proc.poll() is None:
+        logger.info("Stopping OPA server (PID %d)", opa_proc.pid)
+        opa_proc.terminate()
+        opa_proc.wait(timeout=5)
 
 
 app = FastAPI(

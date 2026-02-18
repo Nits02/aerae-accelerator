@@ -28,7 +28,7 @@ _gemini_client = genai.Client(api_key=settings.GEMINI_API_KEY)
 
 # ── Constants ────────────────────────────────────────────────
 AZURE_DEPLOYMENT = settings.AZURE_OPENAI_DEPLOYMENT_NAME
-GEMINI_MODEL = "gemini-2.0-flash-lite"
+GEMINI_MODEL = "gemini-3-flash-preview"
 
 EXTRACTION_PROMPT = """\
 You are a document analysis assistant. Analyse the following document text

@@ -14,7 +14,7 @@
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-4.1-06B6D4?style=for-the-badge&logo=tailwindcss&logoColor=white)](https://tailwindcss.com)
 [![SQLite](https://img.shields.io/badge/SQLite-SQLModel-003B57?style=for-the-badge&logo=sqlite&logoColor=white)](https://sqlmodel.tiangolo.com)
 [![Azure OpenAI](https://img.shields.io/badge/Azure_OpenAI-EPAM_DIAL-0078D4?style=for-the-badge&logo=microsoftazure&logoColor=white)](https://azure.microsoft.com)
-[![Gemini](https://img.shields.io/badge/Google_Gemini-2.0_Flash-4285F4?style=for-the-badge&logo=google&logoColor=white)](https://ai.google.dev)
+[![Gemini](https://img.shields.io/badge/Google_Gemini-3_Flash-4285F4?style=for-the-badge&logo=google&logoColor=white)](https://ai.google.dev)
 [![Poetry](https://img.shields.io/badge/Poetry-Managed-60A5FA?style=for-the-badge&logo=poetry&logoColor=white)](https://python-poetry.org)
 [![Tests](https://img.shields.io/badge/Tests-75_Passing-22C55E?style=for-the-badge&logo=pytest&logoColor=white)](#-running-tests)
 [![ChromaDB](https://img.shields.io/badge/ChromaDB-RAG_Pipeline-FF6F00?style=for-the-badge&logo=databricks&logoColor=white)](https://www.trychroma.com)
@@ -88,6 +88,8 @@ A **React + TypeScript frontend** built with **Vite** and **Tailwind CSS v4** pr
 | 🏛️ | **OPA Policy Gates** | Rego-based ethical gates enforced via Open Policy Agent |
 | 🎯 | **Trust Scoring** | Algorithmic score (100 → 0) penalising Critical (−50), High (−25), Medium (−10) risks & secrets (−15 each) |
 | 🔄 | **Async Assessment** | Background pipeline with job tracking (Processing → Complete / Failed) |
+| 🏛️ | **Auto-Start OPA** | OPA server auto-launches with the backend and stops on shutdown |
+| 🛡️ | **Graceful OPA Fallback** | Pipeline completes with safe defaults if OPA is unreachable |
 | 🛡️ | **Type-Safe** | Pydantic models for all request/response schemas |
 | ⚛️ | **React Frontend** | Vite + React 19 + TypeScript SPA |
 | 🎨 | **Tailwind CSS v4** | Utility-first styling with `@tailwindcss/vite` plugin |
@@ -95,6 +97,7 @@ A **React + TypeScript frontend** built with **Vite** and **Tailwind CSS v4** pr
 | �️ | **Scorecard + Gate Verdict** | Reusable Scorecard component with Allow / Deny policy decision |
 | 📝 | **Assessment Form** | Card-based form with GitHub URL + PDF file upload |
 | 🔄 | **Live Polling** | Dashboard polls every 3s until job completes |
+| 📋 | **Rich Results Dashboard** | Collapsible panels for risks, OPA, PDF analysis, repo scan & matched policies |
 | 🚦 | **Two-Route SPA** | React Router — `/` (form) and `/dashboard/:id` (results) |
 | 🧩 | **Lucide Icons** | Modern icon library integrated throughout the UI |
 | 📈 | **Recharts Ready** | Chart library installed for future data visualisation |
@@ -294,6 +297,11 @@ flowchart TD
     POLL -->|"200 Complete"| CARD
     CARD --> SCORE
     CARD --> GATE
+    CARD --> RISKS["⚠️ Identified Risks<br>severity badges"]:::uiStyle
+    CARD --> OPA_PANEL["🏛️ OPA Policy Evaluation<br>decision + deny reasons"]:::uiStyle
+    CARD --> PDF["📄 Document Analysis<br>purpose · data types · risks"]:::uiStyle
+    CARD --> REPO["🔎 Repository Scan<br>URL · files · secrets · extensions"]:::uiStyle
+    CARD --> POLICIES["📚 Matched Policies<br>RAG vector-store hits"]:::uiStyle
     SCORE --> GREEN
     SCORE --> YELLOW
     SCORE --> RED
@@ -409,7 +417,7 @@ aerae-accelerator/
 | File | Description |
 |:-----|:------------|
 | `backend/pyproject.toml` | Poetry project config — declares dependencies (FastAPI, uvicorn, SQLModel, google-genai, openai, chromadb, pydantic-settings, gitpython, python-multipart, **pypdf**) and dev tools (pytest, httpx, ruff). |
-| `backend/app/main.py` | **FastAPI app entry point.** Initializes the app, registers the API router under `/api/v1`, adds **CORSMiddleware** (allows `localhost:5173`), sets up a lifespan handler that auto-creates database tables on startup, exposes a `/health` liveness probe, and hosts `POST /api/v1/assess` (accepts **PDF file upload + GitHub URL** via `multipart/form-data`, saves the PDF to a temp directory) and `GET /api/v1/assess/{job_id}` (poll results). Contains the full background `run_assessment` pipeline (Ingestion → RAG → Scoring → OPA). Includes a diagnostic warning when ChromaDB returns no policy matches, and sends the correct `secrets_count` field to OPA Rego rules. |
+| `backend/app/main.py` | **FastAPI app entry point.** Initializes the app, registers the API router under `/api/v1`, adds **CORSMiddleware** (allows `localhost:5173`), sets up a lifespan handler that auto-creates database tables on startup and **auto-starts OPA as a managed subprocess** (loads `policies/risk_gates.rego`, waits for health, auto-stops on shutdown). Exposes a `/health` liveness probe, and hosts `POST /api/v1/assess` (accepts **PDF file upload + GitHub URL** via `multipart/form-data`, saves the PDF to a temp directory) and `GET /api/v1/assess/{job_id}` (poll results). Contains the full background `run_assessment` pipeline (Ingestion → RAG → Scoring → OPA). Includes a diagnostic warning when ChromaDB returns no policy matches, and sends the correct `secrets_count` field to OPA Rego rules. |
 | `backend/app/core/config.py` | **Pydantic Settings class.** Securely loads all environment variables from the root-level `.env` file. Manages keys for Azure OpenAI, Gemini, database URL, ChromaDB path, and app settings. |
 | `backend/app/core/db.py` | **Database engine.** Creates a SQLModel/SQLAlchemy engine connected to SQLite (`aerae_local.db`). Defines the `AssessmentJob` model (UUID primary key, status, result JSON). Provides `create_db_and_tables()` called at startup to auto-create all registered model tables. |
 | `backend/app/core/scoring.py` | **Trust-score calculator.** `calculate_trust_score(risks, secrets)` starts at 100 points, subtracts 50 per Critical, 25 per High, 10 per Medium, and 0 per Low risk, plus 15 per secret. Uses `.lower().strip()` for case-insensitive severity matching. Clamps the result to a minimum of 0. |
@@ -430,13 +438,13 @@ aerae-accelerator/
 
 | File | Description |
 |:-----|:------------|
-| `backend/app/services/gemini_service.py` | **Google Gemini wrapper.** Initializes a `genai.Client` with the API key and exposes `generate_content(prompt)` using the `gemini-2.0-flash-lite` model. |
+| `backend/app/services/gemini_service.py` | **Google Gemini wrapper.** Initializes a `genai.Client` with the API key and exposes `generate_content(prompt)` using the `gemini-3-flash-preview` model. |
 | `backend/app/services/azure_openai_service.py` | **Azure OpenAI wrapper.** Initializes an `AzureOpenAI` client pointed at the EPAM DIAL proxy and exposes `chat_completion(prompt)` using the `gpt-4o-mini-2024-07-18` deployment. |
 | `backend/app/services/pdf_parser.py` | **PDF metadata extractor.** Uses **pypdf** to extract plain text from uploaded PDFs, then sends the text to Azure OpenAI (chat completion) or Gemini (text-based) as fallback. Extracts `project_purpose`, `data_types_used`, and `potential_risks` into strict JSON. Truncates text to ~12 000 chars for token safety. |
 | `backend/app/services/git_scanner.py` | **Git repository scanner.** Clones public HTTPS repos via GitPython into temp directories, lists files, detects extensions, and runs Gitleaks CLI for secret detection. Includes `cleanup()` for safe directory removal. |
 | `backend/app/services/ai_engine.py` | **Async Azure AI engine.** Initializes `AsyncAzureOpenAI` client. Provides `get_embedding(text)` using `text-embedding-3-small` (1536-dim vectors) and `analyze_risk(project_json, policies)` which calls GPT-4o with `response_format={"type": "json_object"}` to return structured risk assessments (category / severity / reason). |
 | `backend/app/services/vector_store.py` | **ChromaDB policy vector store.** Persistent `PersistentClient` saving to `./chroma_data`. Manages the `ai_policies` collection with `add_policy(id, text, embedding)`, `search(query_embedding, top_k)`, and `get_relevant_policies(project_description)` which embeds the description and returns top-k nearest policy texts. |
-| `backend/app/services/opa_client.py` | **OPA Gatekeeper client.** Async HTTP client (`httpx`) that POSTs payloads to the local OPA server at `localhost:8181/v1/data/ethical_gates`. Wraps input and returns `{"allow": bool, "deny_reasons": list}`. Supports custom OPA URLs for remote/production deployments. |
+| `backend/app/services/opa_client.py` | **OPA Gatekeeper client.** Async HTTP client (`httpx`) that POSTs payloads to the local OPA server at `localhost:8181/v1/data/ethical_gates`. Wraps input and returns `{"allow": bool, "deny_reasons": list}`. **Gracefully degrades** when OPA is unreachable — catches connection errors and returns a safe default (`allow: false`, reason: "OPA server unavailable") instead of crashing the pipeline. Supports custom OPA URLs for remote/production deployments. |
 
 </details>
 
@@ -502,7 +510,7 @@ aerae-accelerator/
 | `frontend/src/App.tsx` | **App shell & router.** Uses `BrowserRouter` with two routes: `/` renders `AssessmentForm`, `/dashboard/:id` renders `DashboardPage`. Navigation via `useNavigate()`. |
 | `frontend/src/index.css` | **Tailwind CSS v4 entry.** Single `@import "tailwindcss"` directive — the `@tailwindcss/vite` plugin handles all utility class generation at build time. |
 | `frontend/src/components/AssessmentForm.tsx` | **Assessment input form.** Card-based layout with a `type="url"` input for GitHub repos, a styled file drop-zone for PDF upload (`accept=".pdf"`), and a "Run Assessment" button. On submit, builds a `FormData` object and POSTs to `/api/v1/assess` via Axios (`multipart/form-data`). Shows loading spinner, error alerts (red), and success banners (green) with the returned `job_id`. Uses `useNavigate()` to redirect to `/dashboard/{jobId}` on success. |
-| `frontend/src/components/Dashboard.tsx` | **Polling orchestrator.** Receives `jobId` prop. Uses `useEffect` + `setInterval` to poll `GET /api/v1/assess/{job_id}` every 3 seconds. Handles three states: **Processing** (animated spinner), **Failed** (red error card), **Complete** (delegates to `Scorecard`). Auto-stops polling on terminal states and cleans up on unmount. Falls back to `score > 50 → allow / deny` if the backend omits the decision field. |
+| `frontend/src/components/Dashboard.tsx` | **Polling orchestrator & results dashboard.** Receives `jobId` prop. Uses `useEffect` + `setInterval` to poll `GET /api/v1/assess/{job_id}` every 3 seconds, correctly handling **HTTP 202** (keep polling) vs **200** (terminal). Handles three states: **Processing** (animated spinner), **Failed** (red error card), **Complete** (full results). On completion, renders: `Scorecard` (trust gauge + decision), **Identified Risks** (severity badges + category/reason), **OPA Policy Evaluation** (allow/deny + deny reasons), **Document Analysis** (project purpose, data types, potential risks, AI source), **Repository Scan** (URL, file count, secrets, extensions), and **Matched Policies** (vector-store hits). All sections are collapsible via `ChevronUp`/`ChevronDown` toggles. Falls back to `score > 50 → allow / deny` if the backend omits the decision field. |
 | `frontend/src/components/DashboardPage.tsx` | **Route wrapper.** Extracts the `:id` URL parameter via `useParams` and passes it to `Dashboard` as the `jobId` prop. Shows a "New Assessment" back link with an `ArrowLeft` icon. Handles missing ID gracefully. |
 | `frontend/src/components/Scorecard.tsx` | **Reusable scorecard.** Exported component accepting `{ score, decision }` props. Renders a 180×180 SVG circular gauge with the trust score displayed prominently. Conditional Tailwind styling: **green** (score > 80), **yellow** (score 50–80), **red** (score < 50). Below the score, an **Allow / Deny** pill badge shows the OPA gate verdict with `ShieldCheck` / `ShieldX` lucide-react icons. |
 
@@ -548,7 +556,7 @@ aerae-accelerator/
 ```json
 {
   "prompt": "Explain how AI works in a few words",
-  "model": "gemini-2.0-flash-lite"          // optional — uses default if omitted
+  "model": "gemini-3-flash-preview"          // optional — uses default if omitted
 }
 ```
 
@@ -557,7 +565,7 @@ aerae-accelerator/
 ```json
 {
   "source": "gemini",                   // "gemini" or "azure-openai"
-  "model": "gemini-2.0-flash-lite",
+  "model": "gemini-3-flash-preview",
   "response": "AI learns patterns from data to make predictions.",
   "fallback_used": false,               // true if Azure was used as fallback
   "fallback_reason": null               // explains why fallback was triggered
@@ -673,7 +681,7 @@ Polls `GET /api/v1/assess/{job_id}` every 3 seconds until the job reaches a term
 | State | UI |
 |:------|:---|
 | ⏳ Processing | Animated spinner + "Analysing…" message |
-| ✅ Complete | `Scorecard` component — large SVG circular gauge with score + Allow/Deny verdict |
+| ✅ Complete | Full results dashboard — **Scorecard** (SVG gauge + Allow/Deny), **Identified Risks** (severity-tagged cards), **OPA Policy Evaluation** (decision + deny reasons), **Document Analysis** (purpose, data types, PDF risks), **Repository Scan** (URL, files, secrets, extensions), **Matched Policies** (RAG-retrieved rules). All sections are collapsible. |
 | ❌ Failed | Red error card with reason |
 
 **Score Thresholds:**
@@ -798,8 +806,11 @@ python -m scripts.seed_db    # embeds 5 AI-ethics rules into ChromaDB
 
 ### 4️⃣ Verify OPA Ethical Gates _(optional)_
 
+> [!NOTE]
+> OPA is **auto-started** by the backend when you run `uvicorn` (Step 6). You only need to start it manually for standalone policy testing.
+
 ```bash
-# Start the OPA server (separate terminal)
+# Manual standalone testing (separate terminal)
 opa run --server policies/risk_gates.rego
 
 # Run the evaluation script
@@ -825,6 +836,7 @@ uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 > [!TIP]
 > 🌐 API live at **http://127.0.0.1:8000**
 > 📚 Interactive docs at **http://127.0.0.1:8000/docs**
+> 🏛️ OPA server auto-starts on **http://127.0.0.1:8181** (requires `opa` on PATH)
 
 ### 7️⃣ Run the Frontend Dev Server
 

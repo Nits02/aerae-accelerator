@@ -6,7 +6,7 @@ function App() {
   return (
     <BrowserRouter>
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
-        <div className="w-full max-w-lg space-y-8">
+        <div className="w-full max-w-2xl space-y-8">
           <Routes>
             <Route path="/" element={<AssessmentForm />} />
             <Route path="/dashboard/:id" element={<DashboardPage />} />
