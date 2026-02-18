@@ -107,7 +107,13 @@ def test_parse_json_strips_fences():
 
     wrapped = f"```json\n{MOCK_JSON_STRING}\n```"
     result = _parse_json(wrapped)
-    assert result == MOCK_EXTRACTED
+    # _parse_json now adds safe defaults for new optional fields
+    expected = {
+        **MOCK_EXTRACTED,
+        "human_in_the_loop": False,
+        "deployment_target": "unknown",
+    }
+    assert result == expected
 
 
 # ── 7. _parse_json rejects missing keys ─────────────────────

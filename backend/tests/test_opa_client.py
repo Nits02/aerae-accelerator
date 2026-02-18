@@ -153,3 +153,141 @@ async def test_evaluate_payload_http_error():
         gk = OPAGatekeeper()
         with pytest.raises(_httpx.HTTPStatusError):
             await gk.evaluate_payload({})
+
+
+@pytest.mark.asyncio
+async def test_evaluate_payload_critical_severity_deny():
+    """OPA should deny when a critical-severity risk is present (e.g. EU AI Act prohibited practice)."""
+    body = {
+        "result": {
+            "allow": False,
+            "deny_reasons": [
+                "Blocked: critical-severity risk found \u2014 Prohibited Practice: "
+                "System uses subliminal manipulation violating EU AI Act"
+            ],
+        }
+    }
+    patcher, mock_client = _patch_httpx(body)
+
+    with patcher:
+        gk = OPAGatekeeper()
+        result = await gk.evaluate_payload(
+            {
+                "secrets_count": 0,
+                "risks": [
+                    {
+                        "category": "Prohibited Practice",
+                        "severity": "critical",
+                        "reason": "System uses subliminal manipulation violating EU AI Act",
+                    }
+                ],
+            }
+        )
+
+    assert result["allow"] is False
+    assert any("critical" in r.lower() for r in result["deny_reasons"])
+
+
+@pytest.mark.asyncio
+async def test_evaluate_payload_prohibited_use_case_deny():
+    """OPA should deny when the project purpose is a prohibited use case (EU AI Act)."""
+    body = {
+        "result": {
+            "allow": False,
+            "deny_reasons": [
+                "Blocked: Project purpose 'social_scoring' is a prohibited AI practice under the EU AI Act."
+            ],
+        }
+    }
+    patcher, mock_client = _patch_httpx(body)
+
+    with patcher:
+        gk = OPAGatekeeper()
+        result = await gk.evaluate_payload(
+            {
+                "secrets_count": 0,
+                "risks": [],
+                "pdf_analysis": {
+                    "project_purpose": "social_scoring",
+                    "data_types_used": ["text"],
+                    "human_in_the_loop": True,
+                    "deployment_target": "private_cloud",
+                },
+                "code_metadata": {"deployment_target": "private_cloud"},
+            }
+        )
+
+    assert result["allow"] is False
+    assert any("prohibited" in r.lower() for r in result["deny_reasons"])
+
+
+@pytest.mark.asyncio
+async def test_evaluate_payload_missing_human_in_the_loop_deny():
+    """OPA should deny high-severity risks when human_in_the_loop is not documented."""
+    body = {
+        "result": {
+            "allow": False,
+            "deny_reasons": [
+                "Blocked: High-severity risks detected without a documented human-in-the-loop oversight mechanism."
+            ],
+        }
+    }
+    patcher, mock_client = _patch_httpx(body)
+
+    with patcher:
+        gk = OPAGatekeeper()
+        result = await gk.evaluate_payload(
+            {
+                "secrets_count": 0,
+                "risks": [
+                    {
+                        "category": "High-Risk System",
+                        "severity": "high",
+                        "reason": "Employment decision system without safeguards",
+                    }
+                ],
+                "pdf_analysis": {
+                    "project_purpose": "HR screening tool",
+                    "data_types_used": ["pii"],
+                    "human_in_the_loop": False,
+                    "deployment_target": "private_cloud",
+                },
+                "code_metadata": {"deployment_target": "private_cloud"},
+            }
+        )
+
+    assert result["allow"] is False
+    assert any("human-in-the-loop" in r.lower() for r in result["deny_reasons"])
+
+
+@pytest.mark.asyncio
+async def test_evaluate_payload_biometric_public_cloud_deny():
+    """OPA should deny when biometric data is deployed to public cloud."""
+    body = {
+        "result": {
+            "allow": False,
+            "deny_reasons": [
+                "Blocked: Systems processing biometric data cannot be deployed to public-facing unvetted cloud environments."
+            ],
+        }
+    }
+    patcher, mock_client = _patch_httpx(body)
+
+    with patcher:
+        gk = OPAGatekeeper()
+        result = await gk.evaluate_payload(
+            {
+                "secrets_count": 0,
+                "risks": [],
+                "pdf_analysis": {
+                    "project_purpose": "Identity verification",
+                    "data_types_used": ["biometric_data", "pii"],
+                    "human_in_the_loop": True,
+                    "deployment_target": "public_cloud",
+                },
+                "code_metadata": {"deployment_target": "public_cloud"},
+            }
+        )
+
+    assert result["allow"] is False
+    assert any("biometric" in r.lower() for r in result["deny_reasons"])

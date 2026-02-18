@@ -62,7 +62,7 @@ class PolicyVectorStore:
     def search(
         self,
         query_embedding: list[float],
-        top_k: int = 3,
+        top_k: int = 5,
     ) -> list[dict]:
         """Return the *top_k* most similar policies for the given embedding.
 
@@ -88,7 +88,7 @@ class PolicyVectorStore:
     async def get_relevant_policies(
         self,
         project_description: str,
-        top_k: int = 3,
+        top_k: int = 5,
     ) -> list[str]:
         """Embed *project_description* and return the top-k policy texts.
 

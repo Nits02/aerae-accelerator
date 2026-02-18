@@ -16,7 +16,7 @@
 [![Azure OpenAI](https://img.shields.io/badge/Azure_OpenAI-EPAM_DIAL-0078D4?style=for-the-badge&logo=microsoftazure&logoColor=white)](https://azure.microsoft.com)
 [![Gemini](https://img.shields.io/badge/Google_Gemini-3_Flash-4285F4?style=for-the-badge&logo=google&logoColor=white)](https://ai.google.dev)
 [![Poetry](https://img.shields.io/badge/Poetry-Managed-60A5FA?style=for-the-badge&logo=poetry&logoColor=white)](https://python-poetry.org)
-[![Tests](https://img.shields.io/badge/Tests-75_Passing-22C55E?style=for-the-badge&logo=pytest&logoColor=white)](#-running-tests)
+[![Tests](https://img.shields.io/badge/Tests-79_Passing-22C55E?style=for-the-badge&logo=pytest&logoColor=white)](#-running-tests)
 [![ChromaDB](https://img.shields.io/badge/ChromaDB-RAG_Pipeline-FF6F00?style=for-the-badge&logo=databricks&logoColor=white)](https://www.trychroma.com)
 [![OPA](https://img.shields.io/badge/OPA-Rego_Policy_Gates-7D7D7D?style=for-the-badge&logo=openpolicyagent&logoColor=white)](https://www.openpolicyagent.org)
 [![GitPython](https://img.shields.io/badge/GitPython-3.1+-F05032?style=for-the-badge&logo=git&logoColor=white)](https://gitpython.readthedocs.io)
@@ -54,9 +54,9 @@
 
 The platform includes a **project ingestion pipeline** — upload a PDF document and/or provide a GitHub repository URL to automatically extract project metadata, scan for hardcoded secrets using **Gitleaks**, and return a unified `ProjectArtifact` combining document analysis and code intelligence.
 
-A **Retrieval-Augmented Generation (RAG) pipeline** powers the risk-assessment engine: AI-ethics policies are embedded via `text-embedding-3-small` and stored in **ChromaDB**. When a project is analysed, the most relevant policies are retrieved by vector similarity and fed into **GPT-4o** (with structured JSON output) to produce categorised risk assessments with severity levels.
+A **Retrieval-Augmented Generation (RAG) pipeline** powers the risk-assessment engine: AI-ethics and regulatory policies (covering the **EU AI Act**, **NIST AI RMF**, and **UNESCO Ethics of AI**) are embedded via `text-embedding-3-small` and stored in **ChromaDB**. When a project is analysed, the top-5 most relevant policies are retrieved by vector similarity and fed into **GPT-4o** (with structured JSON output) to produce categorised risk assessments with severity levels.
 
-An **OPA (Open Policy Agent) ethical-gate layer** enforces hard policy constraints: Rego rules automatically block projects that contain hardcoded secrets or carry high-severity risks. The `OPAGatekeeper` async client integrates the OPA REST API directly into the Python backend, and a companion bash script (`eval_gates.sh`) enables CLI-based gate evaluation with mock inputs.
+An **OPA (Open Policy Agent) ethical-gate layer** enforces hard policy constraints: Rego rules automatically block projects that contain hardcoded secrets, carry high/critical-severity risks, use **EU AI Act prohibited practices** (social scoring, real-time biometric, subliminal manipulation), lack a documented **human-in-the-loop** oversight mechanism when high-severity risks are present, or deploy **biometric data** to public cloud environments. The `OPAGatekeeper` async client integrates the OPA REST API directly into the Python backend, and a companion bash script (`eval_gates.sh`) enables CLI-based gate evaluation with mock inputs.
 
 A **full end-to-end assessment pipeline** ties everything together: `POST /api/v1/assess` accepts a **PDF file upload** and **GitHub URL** via `multipart/form-data`, creates a tracked job in SQLite, and immediately returns a UUID. The uploaded PDF is saved to a temporary directory so the background pipeline can process it. A background task sequentially runs **Ingestion** (Git clone + Gitleaks + PDF parsing), **RAG** (embedding → policy search → GPT-4o risk analysis), **Trust Scoring** (algorithmic score with Critical/High/Medium/Low/secret penalties, case-insensitive), and **OPA gate evaluation**. Poll `GET /api/v1/assess/{job_id}` for results — **202** while processing, **200** with the full report when complete.
 
@@ -82,10 +82,10 @@ A **React + TypeScript frontend** built with **Vite** and **Tailwind CSS v4** pr
 | 📦 | **Project Ingestion** | Unified `/ingest` endpoint merging PDF + Git into `ProjectArtifact` |
 | 🗄️ | **SQLModel + SQLite** | Lightweight database with auto table creation |
 | 🔒 | **Secure Config** | Secrets loaded from git-ignored `.env` file |
-| 🧪 | **Fully Tested** | 75 pytest test cases across 12 test modules |
+| 🧪 | **Fully Tested** | 79 pytest test cases across 12 test modules |
 | 📦 | **Poetry** | Modern Python dependency management |
 | 🔍 | **ChromaDB** | Persistent vector store with policy document collection |
-| 🏛️ | **OPA Policy Gates** | Rego-based ethical gates enforced via Open Policy Agent |
+| 🏛️ | **OPA Policy Gates** | Rego-based ethical gates — secrets, severity, prohibited use cases, human-in-the-loop, biometric deployment |
 | 🎯 | **Trust Scoring** | Algorithmic score (100 → 0) penalising Critical (−50), High (−25), Medium (−10) risks & secrets (−15 each) |
 | 🔄 | **Async Assessment** | Background pipeline with job tracking (Processing → Complete / Failed) |
 | 🏛️ | **Auto-Start OPA** | OPA server auto-launches with the backend and stops on shutdown |
@@ -177,7 +177,7 @@ flowchart TD
     classDef successStyle fill:#15803d,stroke:#4ade80,stroke-width:2px,color:#f8fafc
     classDef seedStyle fill:#374151,stroke:#9ca3af,stroke-width:2px,color:#f8fafc
 
-    S["🌱 seed_db.py<br>5 AI-ethics rules"]:::seedStyle
+    S["🌱 seed_db.py<br>9 policies (ethics + regulatory)"]:::seedStyle
     E1["🔢 AzureAIEngine<br><code>get_embedding()</code>"]:::engineStyle
     C["🗄️ ChromaDB<br><code>ai_policies</code> collection"]:::chromaStyle
 
@@ -192,7 +192,7 @@ flowchart TD
 
     Q --> E2
     E2 -->|"query embedding"| R
-    R -->|"top-3 policies"| G
+    R -->|"top-5 policies"| G
     Q -->|"project context"| G
     G --> O2
 ```
@@ -208,7 +208,7 @@ flowchart TD
     classDef failStyle fill:#b91c1c,stroke:#f87171,stroke-width:2px,color:#f8fafc
     classDef clientStyle fill:#0f766e,stroke:#2dd4bf,stroke-width:2px,color:#f8fafc
 
-    P["📋 Risk Payload<br>secrets_count + risks[]"]:::inputStyle
+    P["📋 Risk Payload<br>secrets_count + risks[]<br>pdf_analysis + code_metadata"]:::inputStyle
     GK["🐍 OPAGatekeeper<br><code>evaluate_payload()</code>"]:::clientStyle
     OPA["🏛️ OPA Server<br><code>localhost:8181</code>"]:::opaStyle
     REGO["📜 risk_gates.rego<br><code>ethical_gates</code> package"]:::regoStyle
@@ -218,8 +218,8 @@ flowchart TD
     P --> GK
     GK -->|"POST /v1/data/ethical_gates"| OPA
     OPA --> REGO
-    REGO -->|"No secrets & no high risks"| ALLOW
-    REGO -->|"Secrets found or high-severity risk"| DENY
+    REGO -->|"All gates pass"| ALLOW
+    REGO -->|"Secrets, severity, prohibited use,<br>missing oversight, or biometric deploy"| DENY
 ```
 
 ### 🎯 End-to-End Assessment Pipeline
@@ -349,9 +349,9 @@ aerae-accelerator/
 │   │       └── 📄 git_scanner.py           # Git clone, file listing & Gitleaks scan
 │   │
 │   ├── 📂 scripts/              #    🛠️ Standalone utility scripts
-│   │   └── 📄 seed_db.py        #       🆕 Seed ChromaDB with 5 AI-ethics policies
+│   │   └── 📄 seed_db.py        #       🆕 Seed ChromaDB with 9 AI-ethics & regulatory policies
 │   │
-│   └── 📂 tests/                #    🧪 Pytest test suite (75 tests)
+│   └── 📂 tests/                #    🧪 Pytest test suite (79 tests)
 │       ├── 📄 test_setup.py     #       Environment verification test
 │       ├── 📄 test_main.py      #       API endpoint tests (health, generate, fallback)
 │       ├── 📄 test_pdf_parser.py#       PDF parser tests (mocked Azure & Gemini)
@@ -360,7 +360,7 @@ aerae-accelerator/
 │       ├── 📄 test_vector_store.py#     🆕 ChromaDB vector store tests (8 tests)
 │       ├── 📄 test_ai_engine.py #       🆕 Embedding tests (AsyncMock, 6 tests)
 │       ├── 📄 test_analyze_risk.py#     🆕 Risk analysis tests (AsyncMock, 5 tests)
-│       ├── 📄 test_opa_client.py#       🆕 OPA Gatekeeper tests (AsyncMock, 8 tests)
+│       ├── 📄 test_opa_client.py#       🆕 OPA Gatekeeper tests (AsyncMock, 12 tests)
 │       ├── 📄 test_scoring.py   #       🆕 Trust-score calculation tests (3 tests)
 │       ├── 📄 test_assess.py    #       🆕 POST /assess endpoint test (1 test)
 │       └── 📄 test_get_assess.py#       🆕 GET /assess/{job_id} tests (3 tests)
@@ -388,10 +388,10 @@ aerae-accelerator/
 ├── 📂 infra/                    # ☁️  Infrastructure-as-Code (placeholder)
 │
 ├── 📂 policies/                 # 🏛️ OPA Rego policies & evaluation tooling
-│   ├── 📄 risk_gates.rego       #    Ethical-gate rules (secrets + high-severity blocking)
+│   ├── 📄 risk_gates.rego       #    Ethical-gate rules (6 deny rules incl. EU AI Act)
 │   ├── 📄 eval_gates.sh         #    Bash script to evaluate gates via OPA CLI
-│   ├── 📄 mock_input_pass.json  #    Sample passing input (0 secrets, low/medium risks)
-│   └── 📄 mock_input_fail.json  #    Sample failing input (2 secrets, 2 high risks)
+│   ├── 📄 mock_input_pass.json  #    Sample passing input (human oversight, private cloud)
+│   └── 📄 mock_input_fail.json  #    Sample failing input (prohibited use, biometric + public cloud)
 ```
 
 </details>
@@ -417,7 +417,7 @@ aerae-accelerator/
 | File | Description |
 |:-----|:------------|
 | `backend/pyproject.toml` | Poetry project config — declares dependencies (FastAPI, uvicorn, SQLModel, google-genai, openai, chromadb, pydantic-settings, gitpython, python-multipart, **pypdf**) and dev tools (pytest, httpx, ruff). |
-| `backend/app/main.py` | **FastAPI app entry point.** Initializes the app, registers the API router under `/api/v1`, adds **CORSMiddleware** (allows `localhost:5173`), sets up a lifespan handler that auto-creates database tables on startup and **auto-starts OPA as a managed subprocess** (loads `policies/risk_gates.rego`, waits for health, auto-stops on shutdown). Exposes a `/health` liveness probe, and hosts `POST /api/v1/assess` (accepts **PDF file upload + GitHub URL** via `multipart/form-data`, saves the PDF to a temp directory) and `GET /api/v1/assess/{job_id}` (poll results). Contains the full background `run_assessment` pipeline (Ingestion → RAG → Scoring → OPA). Includes a diagnostic warning when ChromaDB returns no policy matches, and sends the correct `secrets_count` field to OPA Rego rules. |
+| `backend/app/main.py` | **FastAPI app entry point.** Initializes the app, registers the API router under `/api/v1`, adds **CORSMiddleware** (allows `localhost:5173`), sets up a lifespan handler that auto-creates database tables on startup and **auto-starts OPA as a managed subprocess** (loads `policies/risk_gates.rego`, waits for health, auto-stops on shutdown). Exposes a `/health` liveness probe, and hosts `POST /api/v1/assess` (accepts **PDF file upload + GitHub URL** via `multipart/form-data`, saves the PDF to a temp directory) and `GET /api/v1/assess/{job_id}` (poll results). Contains the full background `run_assessment` pipeline (Ingestion → RAG → Scoring → OPA). The OPA payload now includes `pdf_analysis` (with `human_in_the_loop`, `deployment_target`) and `code_metadata` alongside `risks` and `secrets_count` to support the expanded Rego rules. Includes a diagnostic warning when ChromaDB returns no policy matches. |
 | `backend/app/core/config.py` | **Pydantic Settings class.** Securely loads all environment variables from the root-level `.env` file. Manages keys for Azure OpenAI, Gemini, database URL, ChromaDB path, and app settings. |
 | `backend/app/core/db.py` | **Database engine.** Creates a SQLModel/SQLAlchemy engine connected to SQLite (`aerae_local.db`). Defines the `AssessmentJob` model (UUID primary key, status, result JSON). Provides `create_db_and_tables()` called at startup to auto-create all registered model tables. |
 | `backend/app/core/scoring.py` | **Trust-score calculator.** `calculate_trust_score(risks, secrets)` starts at 100 points, subtracts 50 per Critical, 25 per High, 10 per Medium, and 0 per Low risk, plus 15 per secret. Uses `.lower().strip()` for case-insensitive severity matching. Clamps the result to a minimum of 0. |
@@ -440,10 +440,10 @@ aerae-accelerator/
 |:-----|:------------|
 | `backend/app/services/gemini_service.py` | **Google Gemini wrapper.** Initializes a `genai.Client` with the API key and exposes `generate_content(prompt)` using the `gemini-3-flash-preview` model. |
 | `backend/app/services/azure_openai_service.py` | **Azure OpenAI wrapper.** Initializes an `AzureOpenAI` client pointed at the EPAM DIAL proxy and exposes `chat_completion(prompt)` using the `gpt-4o-mini-2024-07-18` deployment. |
-| `backend/app/services/pdf_parser.py` | **PDF metadata extractor.** Uses **pypdf** to extract plain text from uploaded PDFs, then sends the text to Azure OpenAI (chat completion) or Gemini (text-based) as fallback. Extracts `project_purpose`, `data_types_used`, and `potential_risks` into strict JSON. Truncates text to ~12 000 chars for token safety. |
+| `backend/app/services/pdf_parser.py` | **PDF metadata extractor.** Uses **pypdf** to extract plain text from uploaded PDFs, then sends the text to Azure OpenAI (chat completion) or Gemini (text-based) as fallback. Extracts `project_purpose`, `data_types_used`, `potential_risks`, `human_in_the_loop` (bool), and `deployment_target` (public_cloud / private_cloud / on_premise / hybrid / unknown) into strict JSON. Truncates text to ~12 000 chars for token safety. |
 | `backend/app/services/git_scanner.py` | **Git repository scanner.** Clones public HTTPS repos via GitPython into temp directories, lists files, detects extensions, and runs Gitleaks CLI for secret detection. Includes `cleanup()` for safe directory removal. |
-| `backend/app/services/ai_engine.py` | **Async Azure AI engine.** Initializes `AsyncAzureOpenAI` client. Provides `get_embedding(text)` using `text-embedding-3-small` (1536-dim vectors) and `analyze_risk(project_json, policies)` which calls GPT-4o with `response_format={"type": "json_object"}` to return structured risk assessments (category / severity / reason). |
-| `backend/app/services/vector_store.py` | **ChromaDB policy vector store.** Persistent `PersistentClient` saving to `./chroma_data`. Manages the `ai_policies` collection with `add_policy(id, text, embedding)`, `search(query_embedding, top_k)`, and `get_relevant_policies(project_description)` which embeds the description and returns top-k nearest policy texts. |
+| `backend/app/services/ai_engine.py` | **Async Azure AI engine.** Initializes `AsyncAzureOpenAI` client. Provides `get_embedding(text)` using `text-embedding-3-small` (1536-dim vectors) and `analyze_risk(project_json, policies)` which calls GPT-4o with `response_format={"type": "json_object"}` to return structured risk assessments (category / severity / reason). System prompt references **EU AI Act**, **NIST AI RMF**, and **UNESCO** frameworks with expanded category labels (Prohibited Practice, High-Risk System, Human Oversight, Accountability). |
+| `backend/app/services/vector_store.py` | **ChromaDB policy vector store.** Persistent `PersistentClient` saving to `./chroma_data`. Manages the `ai_policies` collection with `add_policy(id, text, embedding)`, `search(query_embedding, top_k=5)`, and `get_relevant_policies(project_description, top_k=5)` which embeds the description and returns top-k nearest policy texts. Default `top_k` is 5 to cover the expanded 9-policy knowledge base. |
 | `backend/app/services/opa_client.py` | **OPA Gatekeeper client.** Async HTTP client (`httpx`) that POSTs payloads to the local OPA server at `localhost:8181/v1/data/ethical_gates`. Wraps input and returns `{"allow": bool, "deny_reasons": list}`. **Gracefully degrades** when OPA is unreachable — catches connection errors and returns a safe default (`allow: false`, reason: "OPA server unavailable") instead of crashing the pipeline. Supports custom OPA URLs for remote/production deployments. |
 
 </details>
@@ -453,7 +453,7 @@ aerae-accelerator/
 
 | File | Description |
 |:-----|:------------|
-| `backend/scripts/seed_db.py` | **Database seeder.** Standalone script that embeds 5 hardcoded AI-ethics rules (e.g., "No PII allowed without encryption") via `AzureAIEngine.get_embedding()` and stores them in ChromaDB via `PolicyVectorStore.add_policy()`. Run with `python -m scripts.seed_db` from the backend directory. |
+| `backend/scripts/seed_db.py` | **Database seeder.** Standalone script that embeds 9 policies — 5 internal AI-ethics rules and 4 global regulatory policies (EU AI Act Prohibited Practices, EU AI Act High-Risk Categories, NIST AI RMF Accountability, UNESCO Human Oversight) — via `AzureAIEngine.get_embedding()` and stores them in ChromaDB via `PolicyVectorStore.add_policy()`. Run with `python -m scripts.seed_db` from the backend directory. |
 
 </details>
 
@@ -479,7 +479,7 @@ aerae-accelerator/
 | `backend/tests/test_vector_store.py` | **Vector store tests (8 tests).** Covers: add & search round-trip, similar vector retrieval, top_k limiting, nearest-first ordering, upsert overwrite, empty collection, collection name, fewer-than-top_k results. Uses `tmp_path` fixture for isolation. |
 | `backend/tests/test_ai_engine.py` | **Embedding tests (6 tests).** Covers: returns `list[float]`, correct API args forwarded, custom vector, error propagation, 1536-dim vector, empty string input. All Azure OpenAI calls mocked with `AsyncMock`. |
 | `backend/tests/test_analyze_risk.py` | **Risk analysis tests (5 tests).** Covers: high-severity risk parsing, GPT-4o model + JSON response_format verification, prompt content validation, multiple risks, API error propagation. All chat completions mocked with `AsyncMock`. |
-| `backend/tests/test_opa_client.py` | **OPA Gatekeeper tests (8 tests).** Covers: deny payload parsing, allow payload parsing, input wrapper format, correct URL targeting, custom URL support, missing result key defaults, multiple deny reasons, HTTP error propagation. All httpx calls mocked with `AsyncMock`. |
+| `backend/tests/test_opa_client.py` | **OPA Gatekeeper tests (12 tests).** Covers: deny payload parsing, allow payload parsing, input wrapper format, correct URL targeting, custom URL support, missing result key defaults, multiple deny reasons, HTTP error propagation, critical-severity deny, prohibited use case deny, missing human-in-the-loop deny, biometric + public cloud deny. All httpx calls mocked with `AsyncMock`. |
 | `backend/tests/test_scoring.py` | **Trust-score tests (7 tests).** Covers: perfect score (0 risks, 0 secrets → 100), mixed score (1 Medium + 1 secret → 75), floor at zero (5 High risks → 0), critical severity (−50), low severity (no penalty), case-insensitive whitespace matching, and mixed-case all-severities (critical + high + medium → 15). |
 | `backend/tests/test_assess.py` | **POST /assess & pipeline tests (2 tests).** Patches the background task and asserts immediate 200 OK with valid UUID and `Processing` status. Also mocks the full pipeline with an empty vector store and asserts the `logger.warning` about missing policies is emitted via `caplog`. |
 | `backend/tests/test_get_assess.py` | **GET /assess/{job_id} tests (3 tests).** Covers: completed job returns 200 with full result JSON, non-existent UUID returns 404, processing job returns 202 Accepted. |
@@ -491,10 +491,10 @@ aerae-accelerator/
 
 | File | Description |
 |:-----|:------------|
-| `policies/risk_gates.rego` | **Ethical-gate Rego rules.** Package `ethical_gates` with `default allow := false`. Blocks projects with any hardcoded secrets (`secrets_count > 0`) or any high-severity risks. Returns human-readable `deny_reasons` messages. |
+| `policies/risk_gates.rego` | **Ethical-gate Rego rules.** Package `ethical_gates` with `default allow := false`. Six deny rules: (1) hardcoded secrets (`secrets_count > 0`), (2) critical-severity risks, (3) high-severity risks, (4) EU AI Act prohibited use cases (social scoring, real-time biometric, subliminal manipulation), (5) high-severity risks without documented human-in-the-loop oversight, (6) biometric data deployed to public cloud. Returns human-readable `deny_reasons` messages. |
 | `policies/eval_gates.sh` | **OPA evaluation script.** Bash script that runs `opa eval` against `risk_gates.rego` for one or more input JSON files. Supports per-file or batch mode. Colour-coded PASS/FAIL output. |
-| `policies/mock_input_pass.json` | **Passing mock input.** 0 secrets, 2 risks (low + medium severity) — passes the ethical gate. |
-| `policies/mock_input_fail.json` | **Failing mock input.** 2 secrets, 2 high-severity risks (Data Privacy + Security) — blocked by the ethical gate. |
+| `policies/mock_input_pass.json` | **Passing mock input.** 0 secrets, 4 risks (low + medium), human-in-the-loop enabled, private cloud deployment — passes all ethical gates. |
+| `policies/mock_input_fail.json` | **Failing mock input.** 2 secrets, 3 risks (high + critical), prohibited use case (social scoring), biometric data on public cloud, no human oversight — triggers all deny rules. |
 
 </details>
 
@@ -721,7 +721,7 @@ async def main():
     policies = await store.get_relevant_policies(
         "Our app collects user location data for ML training"
     )
-    print(policies)  # top-3 most relevant AI-ethics rules
+    print(policies)  # top-5 most relevant AI-ethics & regulatory policies
 
     # 2. Run risk analysis with GPT-4o
     project = {
@@ -736,7 +736,7 @@ asyncio.run(main())
 ```
 
 ```bash
-# Seed ChromaDB with 5 AI-ethics policies
+# Seed ChromaDB with 9 AI-ethics & regulatory policies
 cd backend && python -m scripts.seed_db
 ```
 
@@ -749,7 +749,12 @@ async def check_gate():
     result = await gk.evaluate_payload({
         "secrets_count": 2,
         "risks": [{"category": "Data Privacy", "severity": "high",
-                   "reason": "PII collected without encryption"}]
+                   "reason": "PII collected without encryption"}],
+        "pdf_analysis": {"project_purpose": "HR screening",
+                        "human_in_the_loop": False,
+                        "data_types_used": ["pii"],
+                        "deployment_target": "public_cloud"},
+        "code_metadata": {"deployment_target": "public_cloud"}
     })
     print(result)
     # → {"allow": false, "deny_reasons": ["Blocked: 2 hardcoded secret(s)...", ...]}
@@ -801,7 +806,7 @@ poetry install        # installs main + dev dependencies
 
 ```bash
 cd backend
-python -m scripts.seed_db    # embeds 5 AI-ethics rules into ChromaDB
+python -m scripts.seed_db    # embeds 9 AI-ethics & regulatory policies into ChromaDB
 ```
 
 ### 4️⃣ Verify OPA Ethical Gates _(optional)_
@@ -853,7 +858,7 @@ npm run dev          # starts Vite at http://localhost:5173
 
 ```bash
 cd backend
-pytest -v          # 75 tests across 12 modules
+pytest -v          # 79 tests across 12 modules
 ```
 
 ---

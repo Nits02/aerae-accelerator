@@ -10,6 +10,23 @@
       "category": "Security",
       "severity": "high",
       "reason": "Hardcoded API keys found in source code."
+    },
+    {
+      "category": "Prohibited Practice",
+      "severity": "critical",
+      "reason": "System uses subliminal techniques to manipulate user behavior, violating EU AI Act Article 5."
     }
-  ]
+  ],
+  "pdf_analysis": {
+    "project_purpose": "social_scoring",
+    "data_types_used": ["biometric_data", "pii"],
+    "potential_risks": ["mass surveillance", "discrimination"],
+    "human_in_the_loop": false,
+    "deployment_target": "public_cloud"
+  },
+  "code_metadata": {
+    "files_count": 120,
+    "secrets_found": 2,
+    "deployment_target": "public_cloud"
+  }
 }

@@ -37,13 +37,23 @@ and extract the information into **strict JSON** (no markdown fences, no extra k
 {
   "project_purpose": "<concise summary of the project's purpose>",
   "data_types_used": ["<data type 1>", "<data type 2>", "..."],
-  "potential_risks": ["<risk 1>", "<risk 2>", "..."]
+  "potential_risks": ["<risk 1>", "<risk 2>", "..."],
+  "human_in_the_loop": <true or false>,
+  "deployment_target": "<one of: public_cloud, private_cloud, on_premise, hybrid, unknown>"
 }
 
 Rules:
 - "project_purpose" must be a single string (1-3 sentences).
 - "data_types_used" must list every distinct data / data-type category mentioned.
+  Use normalised labels where possible (e.g. "biometric_data", "pii",
+  "health_records", "financial_data").
 - "potential_risks" must list concrete risks or concerns found in the document.
+- "human_in_the_loop" must be true if the document explicitly mentions human
+  oversight, human review, human-in-the-loop, or manual approval for decisions.
+  Otherwise false.
+- "deployment_target" must be inferred from the document. If the project is
+  described as deployed on a public cloud (AWS, Azure, GCP, etc.) set
+  "public_cloud". If on-premise, set "on_premise". If unclear, set "unknown".
 - If a section has no relevant info, use an empty list [] or "Not specified".
 - Output ONLY the JSON object, nothing else.
 """
@@ -119,6 +129,10 @@ def _parse_json(raw_text: str) -> dict:
     if not expected.issubset(parsed.keys()):
         missing = expected - parsed.keys()
         raise ValueError(f"Model response missing keys: {missing}")
+
+    # Ensure optional fields have safe defaults
+    parsed.setdefault("human_in_the_loop", False)
+    parsed.setdefault("deployment_target", "unknown")
 
     return parsed
 

@@ -60,6 +60,8 @@ async def test_empty_vector_store_emits_warning(caplog):
         "project_purpose": "Test project",
         "data_types_used": ["text"],
         "potential_risks": [],
+        "human_in_the_loop": False,
+        "deployment_target": "unknown",
         "source": "azure-openai",
         "fallback_used": False,
         "fallback_reason": None,

@@ -40,6 +40,16 @@ SAMPLE_PROJECT = {
 SAMPLE_POLICIES = [
     "No PII allowed without encryption at rest and in transit.",
     "AI systems must be regularly audited for bias.",
+    (
+        "AI systems deploying subliminal, manipulative, or deceptive techniques "
+        "to distort behavior and impair informed decision-making, causing "
+        "significant harm, are strictly prohibited."
+    ),
+    (
+        "Accountability structures must be in place so that the appropriate "
+        "teams and individuals are empowered, responsible, and trained for "
+        "mapping, measuring, and managing AI risks."
+    ),
 ]
 
 

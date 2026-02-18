@@ -10,6 +10,28 @@
       "category": "Transparency",
       "severity": "medium",
       "reason": "Model decisions lack full audit trail."
+    },
+    {
+      "category": "Human Oversight",
+      "severity": "low",
+      "reason": "Human-in-the-loop review is available but not enforced for all decisions."
+    },
+    {
+      "category": "Accountability",
+      "severity": "medium",
+      "reason": "NIST AI RMF mapping documentation is incomplete but in progress."
     }
-  ]
+  ],
+  "pdf_analysis": {
+    "project_purpose": "Internal document summarisation tool for legal teams",
+    "data_types_used": ["text", "pii"],
+    "potential_risks": ["data leakage"],
+    "human_in_the_loop": true,
+    "deployment_target": "private_cloud"
+  },
+  "code_metadata": {
+    "files_count": 35,
+    "secrets_found": 0,
+    "deployment_target": "private_cloud"
+  }
 }

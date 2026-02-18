@@ -269,6 +269,8 @@ async def run_assessment(job_id: str, pdf_path: str, github_url: str) -> None:
             "trust_score": trust_score,
             "risks": risks,
             "secrets_count": code_metadata.get("secrets_found", 0),
+            "pdf_analysis": pdf_result,
+            "code_metadata": code_metadata,
         }
         opa_result = await opa.evaluate_payload(opa_payload)
 
