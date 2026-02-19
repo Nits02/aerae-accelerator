@@ -13,6 +13,10 @@ import {
   ChevronUp,
 } from "lucide-react";
 import Scorecard from "./Scorecard";
+import ScoreBreakdown from "./ScoreBreakdown";
+import PipelineStepper from "./PipelineStepper";
+import RiskList from "./RiskList";
+import OpaGateDetail from "./OpaGateDetail";
 
 const API_BASE = "http://localhost:8000/api/v1/assess";
 const POLL_INTERVAL = 3000;
@@ -99,22 +103,6 @@ function Section({
       </button>
       {open && <div className="px-4 py-3 text-sm text-gray-600 space-y-2">{children}</div>}
     </div>
-  );
-}
-
-/* ── Severity badge ──────────────────────────────────────── */
-function SeverityBadge({ severity }: { severity: string }) {
-  const s = severity.toLowerCase();
-  const cls =
-    s === "high"
-      ? "bg-red-100 text-red-700"
-      : s === "medium"
-        ? "bg-yellow-100 text-yellow-700"
-        : "bg-green-100 text-green-700";
-  return (
-    <span className={`px-2 py-0.5 rounded-full text-xs font-semibold uppercase ${cls}`}>
-      {severity}
-    </span>
   );
 }
 
@@ -233,7 +221,7 @@ export default function Dashboard({ jobId }: DashboardProps) {
   const opaResult = result?.opa_result;
 
   return (
-    <div className="w-full max-w-2xl mx-auto space-y-6">
+    <div className="w-full max-w-4xl mx-auto space-y-6">
       {/* Header */}
       <div className="flex items-center gap-2">
         <CheckCircle className="h-5 w-5 text-green-600" />
@@ -242,27 +230,26 @@ export default function Dashboard({ jobId }: DashboardProps) {
         </h3>
       </div>
 
-      {/* Scorecard – trust score + policy decision */}
-      <Scorecard score={trustScore} decision={decision} />
+      {/* Pipeline visualization – shows the AI pipeline stages */}
+      <PipelineStepper score={trustScore} decision={decision} />
 
-      {/* ── Risks ─────────────────────────────────────────── */}
+      {/* Scorecard + Score Breakdown – side by side */}
+      <div className="flex flex-col md:flex-row gap-6 items-start">
+        <Scorecard score={trustScore} decision={decision} />
+        <ScoreBreakdown
+          risks={risks}
+          secrets_count={codeMetadata?.secrets_found ?? 0}
+        />
+      </div>
+
+      {/* ── Risks (with grounded policy context) ─────────── */}
       {risks.length > 0 && (
         <Section
           icon={<AlertTriangle className="h-4 w-4 text-yellow-500" />}
           title={`Identified Risks (${risks.length})`}
           defaultOpen
         >
-          <div className="space-y-3">
-            {risks.map((r, i) => (
-              <div key={i} className="flex items-start gap-3 bg-white rounded-lg border border-gray-100 p-3">
-                <SeverityBadge severity={r.severity} />
-                <div className="flex-1">
-                  <p className="font-medium text-gray-800 text-sm">{r.category}</p>
-                  <p className="text-gray-500 text-xs mt-0.5">{r.reason}</p>
-                </div>
-              </div>
-            ))}
-          </div>
+          <RiskList risks={risks} policies_matched={policies} />
         </Section>
       )}
 
@@ -273,31 +260,11 @@ export default function Dashboard({ jobId }: DashboardProps) {
           title="OPA Policy Evaluation"
           defaultOpen
         >
-          <div className="space-y-2">
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-medium text-gray-500 uppercase">Decision:</span>
-              <span
-                className={`px-2 py-0.5 rounded-full text-xs font-bold uppercase ${
-                  opaResult.allow ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
-                }`}
-              >
-                {opaResult.allow ? "Allow" : "Deny"}
-              </span>
-              {opaResult.opa_unavailable && (
-                <span className="text-xs text-amber-600 italic">(OPA server was unavailable)</span>
-              )}
-            </div>
-            {(opaResult.deny_reasons ?? []).length > 0 && (
-              <div>
-                <p className="text-xs font-medium text-gray-500 uppercase mb-1">Reasons:</p>
-                <ul className="list-disc list-inside space-y-0.5 text-xs text-gray-600">
-                  {opaResult.deny_reasons!.map((r, i) => (
-                    <li key={i}>{r}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </div>
+          <OpaGateDetail
+            opaResult={opaResult}
+            risks={risks}
+            secrets_count={codeMetadata?.secrets_found ?? 0}
+          />
         </Section>
       )}
 

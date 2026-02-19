@@ -1,4 +1,4 @@
-import { ShieldCheck, ShieldX } from "lucide-react";
+import { ShieldCheck, Ban } from "lucide-react";
 
 /* ── Props ────────────────────────────────────────────────── */
 export interface ScorecardProps {
@@ -9,17 +9,21 @@ export interface ScorecardProps {
 }
 
 /* ── Colour helpers ───────────────────────────────────────── */
-function scoreColor(score: number) {
-  if (score > 80)
-    return { ring: "text-green-500", bg: "bg-green-50", label: "text-green-700" };
-  if (score > 50)
-    return { ring: "text-yellow-500", bg: "bg-yellow-50", label: "text-yellow-700" };
+function scoreColor(score: number, blocked: boolean) {
+  // When OPA blocks, force red regardless of score
+  if (blocked)
+    return { ring: "text-red-500", bg: "bg-red-50", label: "text-red-700" };
+  if (score >= 80)
+    return { ring: "text-emerald-500", bg: "bg-emerald-50", label: "text-emerald-700" };
+  if (score >= 50)
+    return { ring: "text-amber-500", bg: "bg-amber-50", label: "text-amber-700" };
   return { ring: "text-red-500", bg: "bg-red-50", label: "text-red-700" };
 }
 
-function scoreGrade(score: number) {
-  if (score > 80) return "High Trust";
-  if (score > 50) return "Medium Trust";
+function scoreGrade(score: number, blocked: boolean) {
+  if (blocked) return "Blocked";
+  if (score >= 80) return "High Trust";
+  if (score >= 50) return "Medium Trust";
   return "Low Trust";
 }
 
@@ -29,12 +33,13 @@ export default function Scorecard({ score, decision }: ScorecardProps) {
   const stroke = 10;
   const circumference = 2 * Math.PI * radius;
   const offset = circumference - (score / 100) * circumference;
-  const { ring, bg, label } = scoreColor(score);
 
   const isAllowed = decision === "allow";
+  const blocked = !isAllowed;
+  const { ring, bg, label } = scoreColor(score, blocked);
 
   return (
-    <div className={`flex flex-col items-center gap-6 rounded-2xl ${bg} p-8`}>
+    <div className={`flex-1 min-w-[260px] flex flex-col items-center gap-6 rounded-2xl ${bg} p-8`}>
       {/* ── Circular trust-score gauge ──────────────────────── */}
       <svg width="180" height="180" className="-rotate-90">
         {/* track */}
@@ -72,24 +77,21 @@ export default function Scorecard({ score, decision }: ScorecardProps) {
       <span
         className={`text-sm font-semibold uppercase tracking-wider ${label}`}
       >
-        {scoreGrade(score)}
+        {scoreGrade(score, blocked)}
       </span>
 
       {/* ── Policy-engine decision ─────────────────────────── */}
-      <div
-        className={`mt-2 flex items-center gap-2 rounded-full px-5 py-2 text-sm font-bold uppercase tracking-wide ${
-          isAllowed
-            ? "bg-green-100 text-green-800"
-            : "bg-red-100 text-red-800"
-        }`}
-      >
-        {isAllowed ? (
+      {blocked ? (
+        <div className="mt-2 flex items-center gap-2 rounded-full bg-red-600 px-5 py-2 text-sm font-bold uppercase tracking-wide text-white shadow-md animate-pulse">
+          <Ban className="h-5 w-5" />
+          Blocked
+        </div>
+      ) : (
+        <div className="mt-2 flex items-center gap-2 rounded-full bg-emerald-100 text-emerald-800 px-5 py-2 text-sm font-bold uppercase tracking-wide">
           <ShieldCheck className="h-5 w-5" />
-        ) : (
-          <ShieldX className="h-5 w-5" />
-        )}
-        {isAllowed ? "Allow" : "Deny"}
-      </div>
+          Allow
+        </div>
+      )}
     </div>
   );
 }
